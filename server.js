@@ -1,11 +1,7 @@
-// server.js
 const express = require("express");
 const cheerio = require("cheerio");
 const axios = require("axios");
-const deepl = require("deepl-node");
-
-// 環境変数からDeepL APIキーを取得
-const translator = new deepl.Translator(process.env.DEEPL_API_KEY);
+const translate = require("@vitalets/google-translate-api");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,7 +9,7 @@ const port = process.env.PORT || 3000;
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static("public"));
 
-// 文を分割する関数（略語対応）
+// 文を分割する関数はそのまま
 function splitSentences(text) {
   const abbrevs = ["Mr","Mrs","Ms","Dr","St","Prof","etc","i.e","e.g","vs"];
   const regex = new RegExp(
@@ -33,7 +29,7 @@ function splitSentences(text) {
   return sentences.filter(s => s.length > 0);
 }
 
-// ページごとの文キャッシュ
+// ページキャッシュ
 const pageCache = {};
 
 // EventSource でストリーム翻訳
@@ -77,8 +73,7 @@ app.get("/api/translate-stream", async (req, res) => {
       const batch = sentences.slice(i, i + batchSize).join(" ");
       let jaBatch;
       try {
-        // DeepL APIで翻訳
-        const result = await translator.translateText(batch, null, "ja");
+        const result = await translate(batch, { to: "ja" });
         jaBatch = result.text;
       } catch (err) {
         console.error("Translation error:", err);
