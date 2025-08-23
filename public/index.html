@@ -62,8 +62,16 @@ function translateNext() {
     }
   };
 
-  es.addEventListener("done", () => { log("All batches done"); es.close(); es = null; });
-  es.addEventListener("error", () => { log("EventSource error"); es.close(); es = null; });
+  es.addEventListener("done", () => { 
+    log("All batches done"); 
+    if (es) es.close(); 
+    es = null; 
+  });
+  es.addEventListener("error", () => { 
+    log("EventSource error"); 
+    if (es) es.close(); 
+    es = null; 
+  });
 }
 
 // 検索ボタン機能
