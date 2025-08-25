@@ -45,7 +45,7 @@ app.get("/", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // --- viewport を強制 (最大拡大も許可) ---
+    // --- viewport ---
     const desiredViewport = "width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes";
     const vp = $("meta[name='viewport']");
     if (vp.length) {
@@ -59,48 +59,29 @@ app.get("/", async (req, res) => {
       }
     }
 
-    // --- 横スクロール防止・固定幅コンテナ対応 CSS ---
+    // --- 横幅変換用 CSS ---
     if ($("#tap-translate-mobile-fix").length === 0) {
       const fixCss = `
 <style id="tap-translate-mobile-fix">
-html, body {
-  max-width: 100% !important;
-  width: 100% !important;
-  overflow-x: auto; /* 拡大時に横スクロール可能 */
-}
-img, video, iframe, canvas {
-  max-width: 100% !important;
-  height: auto !important;
-}
-.container, [class*="container"], table {
-  max-width: 100% !important;
-  width: 100% !important;
-}
+html, body { max-width:100% !important; width:100% !important; overflow-x:auto; }
+img, video, iframe, canvas { max-width:100% !important; height:auto !important; }
+.container, [class*="container"], table { max-width:100% !important; width:100% !important; }
 </style>`;
-      const head2 = $("head");
-      if (head2.length) {
-        head2.append(fixCss);
-      } else {
-        $("html").prepend(`<head>${fixCss}</head>`);
-      }
+      $("head").append(fixCss);
     }
 
-    // --- 相対パスを絶対パスに変換 ---
+    // --- 相対パス絶対化 ---
     $("img").each(function () {
       const src = $(this).attr("src");
-      if (src && !src.startsWith("http")) {
-        $(this).attr("src", urlModule.resolve(targetUrl, src));
-      }
+      if (src && !src.startsWith("http")) $(this).attr("src", urlModule.resolve(targetUrl, src));
     });
     $("link, script").each(function () {
       const attr = $(this).is("link") ? "href" : "src";
       const val = $(this).attr(attr);
-      if (val && !val.startsWith("http")) {
-        $(this).attr(attr, urlModule.resolve(targetUrl, val));
-      }
+      if (val && !val.startsWith("http")) $(this).attr(attr, urlModule.resolve(targetUrl, val));
     });
 
-    // --- タグ保持 + 英単語をラップ ---
+    // --- タグ保持 + 英単語ラップ ---
     function wrapTextNodes(node) {
       node.contents().each(function () {
         if (this.type === 'text') {
@@ -115,14 +96,24 @@ img, video, iframe, canvas {
     }
     wrapTextNodes($("body"));
 
-    // 古いタグの CSS 補正
-    $("center").css("display", "block").css("text-align", "center");
-    $("pre").css("white-space", "pre-wrap").css("font-family", "monospace");
+    // --- 固定幅(px)を%に変換 ---
+    $('[style]').each(function () {
+      const style = $(this).attr('style');
+      const newStyle = style.replace(/width\s*:\s*(\d+)px/gi, (_, px) => {
+        const percent = Math.min(Math.round(px / 12), 100); // 12px=1%の目安、簡易計算
+        return `width:${percent}%`;
+      });
+      $(this).attr('style', newStyle);
+    });
 
-    // 下部フォーム追加
+    // 古いタグ補正
+    $("center").css({ display: "block", "text-align": "center" });
+    $("pre").css({ "white-space": "pre-wrap", "font-family": "monospace" });
+
+    // 下部フォーム
     $("body").append(formHTML);
 
-    // 翻訳ポップアップ JS
+    // 翻訳ポップアップ
     $("body").append(`
 <div id="dict-popup" style="
   position: fixed;
@@ -140,20 +131,19 @@ img, video, iframe, canvas {
   display: none;
 "></div>
 <script>
-async function lookup(word) {
-  if (!word) return;
-  try {
-    const res = await fetch("/translate?word=" + encodeURIComponent(word));
+async function lookup(word){
+  if(!word)return;
+  try{
+    const res = await fetch("/translate?word="+encodeURIComponent(word));
     const data = await res.json();
     const popup = document.getElementById("dict-popup");
-    popup.innerText = word + " → " + (data.translated || "翻訳不可");
-    popup.style.display = "block";
-    setTimeout(() => popup.style.display = "none", 5000);
-  } catch(e) { console.error(e); }
+    popup.innerText = word+" → "+(data.translated||"翻訳不可");
+    popup.style.display="block";
+    setTimeout(()=>popup.style.display="none",5000);
+  }catch(e){console.error(e);}
 }
-
-document.addEventListener("click", (e) => {
-  if (e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
+document.addEventListener("click",e=>{
+  if(e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
 });
 </script>
     `);
@@ -167,18 +157,16 @@ document.addEventListener("click", (e) => {
 
 // 翻訳 API
 app.get("/translate", async (req, res) => {
-  if (!translate) return res.json({ translated: "翻訳機能無効" });
-
+  if(!translate) return res.json({translated:"翻訳機能無効"});
   const word = req.query.word;
-  if (!word) return res.json({ translated: "" });
-
-  try {
-    const [translation] = await translate.translate(word, "ja");
-    res.json({ translated: translation });
-  } catch (err) {
+  if(!word) return res.json({translated:""});
+  try{
+    const [translation] = await translate.translate(word,"ja");
+    res.json({translated:translation});
+  }catch(err){
     console.error(err);
-    res.json({ translated: "翻訳エラー" });
+    res.json({translated:"翻訳エラー"});
   }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, ()=>console.log(`Server running on port ${PORT}`));
