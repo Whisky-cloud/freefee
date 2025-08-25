@@ -4,17 +4,16 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const urlModule = require("url");
 
-// Google Cloud Translation API v2 クライアント
+// Google Cloud Translation API v2
 const { Translate } = require("@google-cloud/translate").v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Render 環境変数 GOOGLE_CREDENTIALS を利用
-let credentials;
+// Google Translate API 初期化
 let translate = null;
 try {
-  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   translate = new Translate({
     projectId: credentials.project_id,
     credentials,
@@ -25,7 +24,7 @@ try {
 
 app.use(express.urlencoded({ extended: true }));
 
-// 下部固定フォーム
+// 下部固定URL入力フォーム
 const formHTML = `
 <form method="get" style="
   position: fixed;
@@ -40,13 +39,17 @@ const formHTML = `
 `;
 
 // テキストノードを <span> でラップする関数
-function wrapTextNodes(node) {
+function wrapTextNodes($, node) {
   node.contents().each(function () {
     if (this.type === "text" && this.data.trim() !== "") {
-      const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g, '<span class="highlight-word">$1</span>');
-      node.replaceWith(wrapped);
+      const span = $("<span>")
+        .addClass("highlight-word")
+        .text(this.data)
+        // フォントサイズが指定されていない場合 30px を追加
+        .attr("style", "font-size:30px;");
+      $(this).replaceWith(span);
     } else if (this.type === "tag") {
-      wrapTextNodes(node.constructor(this));
+      wrapTextNodes($, $(this));
     }
   });
 }
@@ -66,7 +69,6 @@ app.get("/", async (req, res) => {
         $(this).attr("src", urlModule.resolve(targetUrl, src));
       }
     });
-
     $("link, script").each(function () {
       const attr = $(this).is("link") ? "href" : "src";
       const val = $(this).attr(attr);
@@ -76,7 +78,7 @@ app.get("/", async (req, res) => {
     });
 
     // --- タグ保持 + テキストノードだけ置換 ---
-    wrapTextNodes($("body"));
+    wrapTextNodes($, $("body"));
 
     // 古いタグや特殊タグのCSS補正
     $("center").css("display", "block").css("text-align", "center");
@@ -100,8 +102,8 @@ app.get("/", async (req, res) => {
   z-index: 9999;
   max-width: 90%;
   word-break: break-word;
-  display: none;">
-</div>
+  display: none;"></div>
+
 <script>
 async function lookup(word) {
   try {
