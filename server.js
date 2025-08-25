@@ -1,4 +1,6 @@
 const express = require("express");
+const axios = require("axios");
+const cheerio = require("cheerio");
 const {Translate} = require("@google-cloud/translate").v2;
 
 const app = express();
@@ -11,7 +13,84 @@ const translate = new Translate({
   credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS)
 });
 
-// 単語翻訳 API
+app.use(express.urlencoded({ extended: true }));
+
+// URL入力フォーム（下部固定）
+const formHTML = `
+<form method="get" style="
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  text-align: center;
+">
+  <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:16px;">
+  <button type="submit" style="height:40px;font-size:16px;padding:0 12px;">開く</button>
+</form>
+`;
+
+app.get("/", async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.send(formHTML);
+
+  try {
+    const { data } = await axios.get(targetUrl);
+    const $ = cheerio.load(data);
+
+    // 英単語を span でラップ（最小限）
+    const bodyHtml = $("body").html();
+    const wrapped = bodyHtml.replace(/\b([a-zA-Z]{2,})\b/g,
+      '<span class="highlight-word">$1</span>'
+    );
+    $("body").html(wrapped + formHTML);
+
+    // タップ辞書用 JS（ポップアップ表示）
+    $("body").append(`
+<div id="dict-popup" style="
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.9);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  z-index: 9999;
+  max-width: 90%;
+  word-break: break-word;
+  display: none;
+"></div>
+
+<script>
+async function lookup(word) {
+  try {
+    const res = await fetch("/translate?word=" + encodeURIComponent(word));
+    const data = await res.json();
+    const popup = document.getElementById("dict-popup");
+    popup.innerText = word + " → " + data.translated;
+    popup.style.display = "block";
+    setTimeout(() => popup.style.display = "none", 5000);
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
+});
+</script>
+    `);
+
+    res.send($.html());
+  } catch (err) {
+    console.error(err);
+    res.status(500).send(formHTML + "<p style='color:red;'>ページを取得できませんでした</p>");
+  }
+});
+
+// 翻訳 API
 app.get("/translate", async (req, res) => {
   const word = req.query.word;
   if (!word) return res.json({ translated: "" });
