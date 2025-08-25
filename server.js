@@ -2,131 +2,145 @@
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
-
+const urlModule = require("url");
 const { Translate } = require("@google-cloud/translate").v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Render 環境変数 GOOGLE_CREDENTIALS を利用
-let credentials;
-try {
-  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-} catch (e) {
-  console.error("GOOGLE_CREDENTIALS が正しく設定されていません");
-}
-
+// Google Translate API 初期化
 let translate = null;
-if (credentials) {
+try {
+  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   translate = new Translate({
-    projectId: credentials.project_id,
+    projectId: process.env.GOOGLE_PROJECT_ID,
     credentials,
   });
+} catch (e) {
+  console.error("GOOGLE_CREDENTIALS が未設定または不正です。翻訳機能は無効になります。");
 }
 
 app.use(express.urlencoded({ extended: true }));
 
-// 入力フォームのHTML
+// 下部固定URL入力フォーム + フォントサイズ調整
 const formHTML = `
-<div style="text-align:center; margin:20px;">
-  <input type="url" id="url-input" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:32px;">
-  <button id="open-btn" style="height:40px;font-size:32px;padding:0 12px;">開く</button>
+<div style="
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  text-align: center;">
+  <input type="url" id="tap-url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:32px;">
+  <button onclick="openURL()" style="height:40px;font-size:32px;padding:0 12px;">開く</button>
+  <br>
+  <input type="range" id="font-slider" min="10" max="100" value="30" style="width:50%; height:32px; background-color:#5C4033; margin-top:8px;">
+  <input type="number" id="font-input" min="10" max="100" value="30" style="width:60px; height:32px; font-size:32px;">
 </div>
+
 <script>
-document.getElementById("open-btn").addEventListener("click", () => {
-  const url = document.getElementById("url-input").value;
-  if(url) window.location.href='/proxy?url=' + encodeURIComponent(url);
+const slider = document.getElementById('font-slider');
+const fontInput = document.getElementById('font-input');
+
+slider.addEventListener('input', () => {
+  fontInput.value = slider.value;
+  document.body.style.fontSize = slider.value + 'px';
 });
+
+fontInput.addEventListener('change', () => {
+  let val = parseInt(fontInput.value);
+  if(isNaN(val)) val = 30;
+  val = Math.min(100, Math.max(10, val));
+  slider.value = val;
+  document.body.style.fontSize = val + 'px';
+});
+
+function openURL(){
+  const url = document.getElementById('tap-url').value;
+  if(url) window.location.href = "/?url=" + encodeURIComponent(url);
+}
 </script>
 `;
 
-// テキストノードを <span> でラップ
-function wrapTextNodes($, element) {
-  element.contents().each(function () {
-    if (this.type === "text" && this.data.trim() !== "") {
-      const span = $("<span>")
-        .addClass("highlight-word")
-        .text(this.data);
-      $(this).replaceWith(span);
-    } else if (this.type === "tag") {
-      wrapTextNodes($, $(this));
-    }
-  });
-}
-
-// 指定されたページを翻訳して返す
-app.get("/proxy", async (req, res) => {
+app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
-  const lang = req.query.lang || "ja";
-
-  if (!targetUrl) {
-    return res.send(formHTML);
-  }
+  if (!targetUrl) return res.send(formHTML);
 
   try {
-    const response = await axios.get(targetUrl);
-    const $ = cheerio.load(response.data);
+    const { data } = await axios.get(targetUrl);
+    const $ = cheerio.load(data);
 
-    // テキストノードをラップ
-    wrapTextNodes($, $("body"));
+    // 相対パスを絶対パスに変換
+    $("img").each(function () {
+      const src = $(this).attr("src");
+      if (src && !src.startsWith("http")) {
+        $(this).attr("src", urlModule.resolve(targetUrl, src));
+      }
+    });
 
-    // 翻訳
-    if (translate) {
-      const texts = $(".highlight-word").map((i, el) => $(el).text()).get();
-      let [translations] = await translate.translate(texts, lang);
-      if (!Array.isArray(translations)) translations = [translations];
-      $(".highlight-word").each(function (i) {
-        $(this).attr("data-translation", translations[i]);
+    $("link, script").each(function () {
+      const attr = $(this).is("link") ? "href" : "src";
+      const val = $(this).attr(attr);
+      if (val && !val.startsWith("http")) {
+        $(this).attr(attr, urlModule.resolve(targetUrl, val));
+      }
+    });
+
+    // テキストノードを <span> でラップ
+    function wrapTextNodes(node) {
+      node.contents().each(function () {
+        if (this.type === 'text' && this.data.trim() !== '') {
+          const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g,
+            '<span class="highlight-word" style="cursor:pointer;">$1</span>'
+          );
+          $(this).replaceWith(wrapped);
+        } else if (this.type === 'tag') {
+          wrapTextNodes($(this));
+        }
       });
     }
 
-    // フォントサイズ指定
-    $("[style]").each(function () {
-      let style = $(this).attr("style");
-      if (!/font-size/.test(style)) style += "; font-size:30px;";
-      $(this).attr("style", style);
-    });
-    $("*").each(function () {
-      const el = $(this);
-      if (!el.attr("style")) el.attr("style", "font-size:30px;");
-    });
+    wrapTextNodes($("body"));
 
-    // ツールチップ用スクリプト
+    // 古いタグや特殊タグのCSS補正
+    $("center").css("display", "block").css("text-align", "center");
+    $("pre").css("white-space", "pre-wrap").css("font-family", "monospace");
+
+    // 下部フォーム追加
+    $("body").append(formHTML);
+
+    // タップ翻訳ポップアップ JS
     $("body").append(`
-<style>
-.tooltip {
-  position: absolute;
-  background: #fff8dc;
-  border: 2px solid #5a2d0c;
-  padding: 8px 12px;
-  font-size: 24px;
-  border-radius: 6px;
+<div id="dict-popup" style="
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.9);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 16px;
   z-index: 9999;
-  box-shadow: 0 0 5px rgba(0,0,0,0.3);
-}
-.highlight-word {
-  cursor: pointer;
-}
-</style>
+  max-width: 90%;
+  word-break: break-word;
+  display: none;
+"></div>
+
 <script>
-function showTooltip(target, text) {
-  document.querySelectorAll(".tooltip").forEach(t => t.remove());
-  const rect = target.getBoundingClientRect();
-  const tooltip = document.createElement("div");
-  tooltip.className = "tooltip";
-  tooltip.innerText = text;
-  document.body.appendChild(tooltip);
-  tooltip.style.left = rect.left + window.scrollX + "px";
-  tooltip.style.top = rect.bottom + window.scrollY + "px";
+async function lookup(word){
+  try {
+    const res = await fetch("/translate?word=" + encodeURIComponent(word));
+    const data = await res.json();
+    const popup = document.getElementById("dict-popup");
+    popup.innerText = word + " → " + data.translated;
+    popup.style.display = "block";
+    setTimeout(()=>popup.style.display="none",5000);
+  } catch(e){console.error(e);}
 }
 
-document.addEventListener("click", (e) => {
-  if (e.target.classList.contains("highlight-word")) {
-    const translation = e.target.getAttribute("data-translation") || "";
-    showTooltip(e.target, translation);
-  } else {
-    document.querySelectorAll(".tooltip").forEach(t => t.remove());
-  }
+document.addEventListener("click",(e)=>{
+  if(e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
 });
 </script>
 `);
@@ -134,10 +148,22 @@ document.addEventListener("click", (e) => {
     res.send($.html());
   } catch (err) {
     console.error(err);
-    res.status(500).send("エラーが発生しました");
+    res.status(500).send(formHTML + "<p style='color:red;'>ページを取得できませんでした</p>");
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`サーバーがポート ${PORT} で起動しました`);
+// 翻訳 API
+app.get("/translate", async (req,res)=>{
+  const word = req.query.word;
+  if(!word) return res.json({translated:""});
+  if(!translate) return res.json({translated:"翻訳機能無効"});
+  try{
+    const [translation] = await translate.translate(word,"ja");
+    res.json({translated:translation});
+  }catch(err){
+    console.error(err);
+    res.json({translated:"翻訳エラー"});
+  }
 });
+
+app.listen(PORT,()=>console.log(`Server running on port ${PORT}`));
