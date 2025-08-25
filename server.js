@@ -4,27 +4,28 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const urlModule = require("url");
 
-// Google Cloud Translation API v2
+// Google Cloud Translation API v2 クライアント
 const { Translate } = require("@google-cloud/translate").v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Render 環境変数 GOOGLE_CREDENTIALS を利用
+let credentials;
 let translate = null;
 try {
-  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
   translate = new Translate({
     projectId: credentials.project_id,
     credentials,
   });
 } catch (e) {
-  console.error("❌ GOOGLE_CREDENTIALS が正しく設定されていません。翻訳機能は無効になります。");
+  console.error("GOOGLE_CREDENTIALS が正しく設定されていません。翻訳機能は無効になります。");
 }
 
 app.use(express.urlencoded({ extended: true }));
 
-// 下部固定URL入力フォーム
+// 下部固定フォーム
 const formHTML = `
 <form method="get" style="
   position: fixed;
@@ -38,6 +39,18 @@ const formHTML = `
 </form>
 `;
 
+// テキストノードを <span> でラップする関数
+function wrapTextNodes(node) {
+  node.contents().each(function () {
+    if (this.type === "text" && this.data.trim() !== "") {
+      const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g, '<span class="highlight-word">$1</span>');
+      node.replaceWith(wrapped);
+    } else if (this.type === "tag") {
+      wrapTextNodes(node.constructor(this));
+    }
+  });
+}
+
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.send(formHTML);
@@ -46,7 +59,7 @@ app.get("/", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // 相対パスを絶対パスに変換
+    // --- 相対パスを絶対パスに変換 ---
     $("img").each(function () {
       const src = $(this).attr("src");
       if (src && !src.startsWith("http")) {
@@ -62,20 +75,7 @@ app.get("/", async (req, res) => {
       }
     });
 
-    // タグ保持 + テキストノードだけ置換
-    function wrapTextNodes(node) {
-      node.contents().each(function () {
-        if (this.type === 'text') {
-          const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g,
-            '<span class="highlight-word">$1</span>'
-          );
-          $(this).replaceWith(wrapped);
-        } else if (this.type === 'tag') {
-          wrapTextNodes($(this));
-        }
-      });
-    }
-
+    // --- タグ保持 + テキストノードだけ置換 ---
     wrapTextNodes($("body"));
 
     // 古いタグや特殊タグのCSS補正
@@ -84,26 +84,6 @@ app.get("/", async (req, res) => {
 
     // 下部フォーム追加
     $("body").append(formHTML);
-
-    // --- 相対フォントサイズ +5px ---
-    $("*").each(function () {
-      const el = $(this);
-      const style = el.attr("style");
-      if (!style) return;
-
-      const newStyle = style.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
-        return `font-size:${parseInt(px) + 5}px`;
-      });
-      el.attr("style", newStyle);
-    });
-
-    $("style").each(function () {
-      let css = $(this).html();
-      css = css.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
-        return `font-size:${parseInt(px) + 5}px`;
-      });
-      $(this).html(css);
-    });
 
     // タップ翻訳ポップアップ JS
     $("body").append(`
@@ -120,11 +100,10 @@ app.get("/", async (req, res) => {
   z-index: 9999;
   max-width: 90%;
   word-break: break-word;
-  display: none;"></div>
-
+  display: none;">
+</div>
 <script>
 async function lookup(word) {
-  if (!word) return;
   try {
     const res = await fetch("/translate?word=" + encodeURIComponent(word));
     const data = await res.json();
@@ -150,16 +129,5 @@ document.addEventListener("click", (e) => {
 
 // 翻訳 API
 app.get("/translate", async (req, res) => {
-  if (!translate) return res.json({ translated: "翻訳機能が無効です" });
   const word = req.query.word;
-  if (!word) return res.json({ translated: "" });
-  try {
-    const [translation] = await translate.translate(word, "ja");
-    res.json({ translated: translation });
-  } catch (err) {
-    console.error(err);
-    res.json({ translated: "翻訳エラー" });
-  }
-});
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  if (!word || !translate) return res.json({ translated: "" });
