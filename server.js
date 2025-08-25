@@ -1,172 +1,96 @@
+// server.js
 const express = require("express");
-const cheerio = require("cheerio");
 const axios = require("axios");
-const urlModule = require("url");
+const cheerio = require("cheerio");
 
-// Google Cloud Translation API v2 クライアント
-const { Translate } = require("@google-cloud/translate").v2;
+const {Translate} = require("@google-cloud/translate").v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- Google Translate API 初期化 ---
-let translate = null;
+// Render 環境変数 GOOGLE_CREDIENTIALS を利用
+let credentials;
 try {
-  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-  translate = new Translate({
-    projectId: process.env.GOOGLE_PROJECT_ID,
-    credentials,
-  });
+  credentials = JSON.parse(process.env.GOOGLE_CREDIENTIALS);
 } catch (e) {
-  console.error("環境変数 GOOGLE_CREDENTIALS が未設定または不正です。翻訳機能は無効になります。");
+  console.error("GOOGLE_CREDIENTIALS が正しく設定されていません");
 }
 
-app.use(express.urlencoded({ extended: true }));
+const translate = new Translate({
+  projectId: credentials.project_id,
+  credentials,
+});
 
-// 下部固定フォーム
-const formHTML = `
-<form method="get" style="
-  position: fixed;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999;
-  text-align: center;">
-  <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:16px;">
-  <button type="submit" style="height:40px;font-size:16px;padding:0 12px;">開く</button>
-</form>
-`;
+// テキストノードを <span> でラップする関数
+function wrapTextNodes($, element) {
+  element.contents().each(function () {
+    if (this.type === "text" && this.data.trim() !== "") {
+      const span = $("<span>")
+        .addClass("translatable")
+        .text(this.data);
+      $(this).replaceWith(span);
+    } else if (this.type === "tag") {
+      wrapTextNodes($, $(this));
+    }
+  });
+}
 
-app.get("/", async (req, res) => {
+// 指定されたページを翻訳して返す
+app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
-  if (!targetUrl) return res.send(formHTML);
+  const lang = req.query.lang || "ja";
+
+  if (!targetUrl) {
+    return res.status(400).send("url パラメータが必要です");
+  }
 
   try {
-    const { data } = await axios.get(targetUrl);
-    const $ = cheerio.load(data);
+    const response = await axios.get(targetUrl);
+    const $ = cheerio.load(response.data);
 
-    // --- viewport ---
-    const desiredViewport = "width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes";
-    const vp = $("meta[name='viewport']");
-    if (vp.length) {
-      vp.attr("content", desiredViewport);
-    } else {
-      const head = $("head");
-      if (head.length) {
-        head.prepend(`<meta name="viewport" content="${desiredViewport}">`);
-      } else {
-        $("html").prepend(`<head><meta name="viewport" content="${desiredViewport}"></head>`);
-      }
+    // テキストノードをラップ
+    wrapTextNodes($, $("body"));
+
+    // すべての翻訳対象テキストを取得
+    const texts = $(".translatable")
+      .map((i, el) => $(el).text())
+      .get();
+
+    // Google 翻訳 API で翻訳
+    let [translations] = await translate.translate(texts, lang);
+
+    if (!Array.isArray(translations)) {
+      translations = [translations];
     }
 
-    // --- 横幅変換用 CSS ---
-    if ($("#tap-translate-mobile-fix").length === 0) {
-      const fixCss = `
-<style id="tap-translate-mobile-fix">
-html, body { max-width:100% !important; width:100% !important; overflow-x:auto; }
-img, video, iframe, canvas { max-width:100% !important; height:auto !important; }
-.container, [class*="container"], table { max-width:100% !important; width:100% !important; }
-</style>`;
-      $("head").append(fixCss);
-    }
-
-    // --- 相対パス絶対化 ---
-    $("img").each(function () {
-      const src = $(this).attr("src");
-      if (src && !src.startsWith("http")) $(this).attr("src", urlModule.resolve(targetUrl, src));
-    });
-    $("link, script").each(function () {
-      const attr = $(this).is("link") ? "href" : "src";
-      const val = $(this).attr(attr);
-      if (val && !val.startsWith("http")) $(this).attr(attr, urlModule.resolve(targetUrl, val));
+    $(".translatable").each(function (i) {
+      $(this).text(translations[i]);
     });
 
-    // --- タグ保持 + 英単語ラップ ---
-    function wrapTextNodes(node) {
-      node.contents().each(function () {
-        if (this.type === 'text') {
-          const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g,
-            '<span class="highlight-word">$1</span>'
-          );
-          $(this).replaceWith(wrapped);
-        } else if (this.type === 'tag') {
-          wrapTextNodes($(this));
-        }
+    // フォントサイズを相対的に +5px
+    $("[style]").each(function () {
+      let style = $(this).attr("style");
+      style = style.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
+        return `font-size:${parseInt(px) + 5}px`;
       });
-    }
-    wrapTextNodes($("body"));
-
-    // --- 固定幅(px)を%に変換 ---
-    $('[style]').each(function () {
-      const style = $(this).attr('style');
-      const newStyle = style.replace(/width\s*:\s*(\d+)px/gi, (_, px) => {
-        const percent = Math.min(Math.round(px / 12), 100); // 12px=1%の目安、簡易計算
-        return `width:${percent}%`;
-      });
-      $(this).attr('style', newStyle);
+      $(this).attr("style", style);
     });
 
-    // 古いタグ補正
-    $("center").css({ display: "block", "text-align": "center" });
-    $("pre").css({ "white-space": "pre-wrap", "font-family": "monospace" });
-
-    // 下部フォーム
-    $("body").append(formHTML);
-
-    // 翻訳ポップアップ
-    $("body").append(`
-<div id="dict-popup" style="
-  position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0,0,0,0.9);
-  color: #fff;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 16px;
-  z-index: 9999;
-  max-width: 90%;
-  word-break: break-word;
-  display: none;
-"></div>
-<script>
-async function lookup(word){
-  if(!word)return;
-  try{
-    const res = await fetch("/translate?word="+encodeURIComponent(word));
-    const data = await res.json();
-    const popup = document.getElementById("dict-popup");
-    popup.innerText = word+" → "+(data.translated||"翻訳不可");
-    popup.style.display="block";
-    setTimeout(()=>popup.style.display="none",5000);
-  }catch(e){console.error(e);}
-}
-document.addEventListener("click",e=>{
-  if(e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
-});
-</script>
-    `);
+    $("style").each(function () {
+      let css = $(this).html();
+      css = css.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
+        return `font-size:${parseInt(px) + 5}px`;
+      });
+      $(this).html(css);
+    });
 
     res.send($.html());
   } catch (err) {
     console.error(err);
-    res.status(500).send(formHTML + "<p style='color:red;'>ページ取得失敗</p>");
+    res.status(500).send("エラーが発生しました");
   }
 });
 
-// 翻訳 API
-app.get("/translate", async (req, res) => {
-  if(!translate) return res.json({translated:"翻訳機能無効"});
-  const word = req.query.word;
-  if(!word) return res.json({translated:""});
-  try{
-    const [translation] = await translate.translate(word,"ja");
-    res.json({translated:translation});
-  }catch(err){
-    console.error(err);
-    res.json({translated:"翻訳エラー"});
-  }
+app.listen(PORT, () => {
+  console.log(`サーバーがポート ${PORT} で起動しました`);
 });
-
-app.listen(PORT, ()=>console.log(`Server running on port ${PORT}`));
