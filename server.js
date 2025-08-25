@@ -45,8 +45,8 @@ app.get("/", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // --- viewport を強制 ---
-    const desiredViewport = "width=device-width, initial-scale=1.0, user-scalable=yes";
+    // --- viewport を強制 (最大拡大も許可) ---
+    const desiredViewport = "width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes";
     const vp = $("meta[name='viewport']");
     if (vp.length) {
       vp.attr("content", desiredViewport);
@@ -63,10 +63,18 @@ app.get("/", async (req, res) => {
     if ($("#tap-translate-mobile-fix").length === 0) {
       const fixCss = `
 <style id="tap-translate-mobile-fix">
-@media (max-width: 1024px) {
-  html, body { max-width:100%; overflow-x:hidden; }
-  img, video, iframe, canvas { max-width:100%; height:auto; }
-  .container, [class*="container"], table { max-width:100% !important; width:100% !important; }
+html, body {
+  max-width: 100% !important;
+  width: 100% !important;
+  overflow-x: auto; /* 拡大時に横スクロール可能 */
+}
+img, video, iframe, canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}
+.container, [class*="container"], table {
+  max-width: 100% !important;
+  width: 100% !important;
 }
 </style>`;
       const head2 = $("head");
