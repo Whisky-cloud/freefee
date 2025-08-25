@@ -35,17 +35,19 @@ const formHTML = `
   text-align: center;">
   <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:16px;">
   <button type="submit" style="height:40px;font-size:16px;padding:0 12px;">開く</button>
+  <br>
+  <label for="font-slider" style="color:#000;">フォントサイズ調整:</label>
+  <input type="range" id="font-slider" min="10" max="80" value="30" style="width:200px;">
 </form>
 `;
 
-// テキストノードを <span> でラップする関数
+// テキストノードを <span> でラップ
 function wrapTextNodes($, node) {
   node.contents().each(function () {
     if (this.type === "text" && this.data.trim() !== "") {
       const span = $("<span>")
         .addClass("highlight-word")
         .text(this.data)
-        // フォントサイズが指定されていない場合 30px を追加
         .attr("style", "font-size:30px;");
       $(this).replaceWith(span);
     } else if (this.type === "tag") {
@@ -62,32 +64,28 @@ app.get("/", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // --- 相対パスを絶対パスに変換 ---
+    // 相対パスを絶対パスに変換
     $("img").each(function () {
       const src = $(this).attr("src");
-      if (src && !src.startsWith("http")) {
-        $(this).attr("src", urlModule.resolve(targetUrl, src));
-      }
+      if (src && !src.startsWith("http")) $(this).attr("src", urlModule.resolve(targetUrl, src));
     });
     $("link, script").each(function () {
       const attr = $(this).is("link") ? "href" : "src";
       const val = $(this).attr(attr);
-      if (val && !val.startsWith("http")) {
-        $(this).attr(attr, urlModule.resolve(targetUrl, val));
-      }
+      if (val && !val.startsWith("http")) $(this).attr(attr, urlModule.resolve(targetUrl, val));
     });
 
-    // --- タグ保持 + テキストノードだけ置換 ---
+    // テキストノードをラップ
     wrapTextNodes($, $("body"));
 
-    // 古いタグや特殊タグのCSS補正
+    // 基本CSS補正
     $("center").css("display", "block").css("text-align", "center");
     $("pre").css("white-space", "pre-wrap").css("font-family", "monospace");
 
     // 下部フォーム追加
     $("body").append(formHTML);
 
-    // タップ翻訳ポップアップ JS
+    // タップ翻訳 & フォントスライダー JS
     $("body").append(`
 <div id="dict-popup" style="
   position: fixed;
@@ -118,6 +116,15 @@ async function lookup(word) {
 
 document.addEventListener("click", (e) => {
   if (e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
+});
+
+// フォントサイズスライダー
+const slider = document.getElementById("font-slider");
+slider.addEventListener("input", () => {
+  const size = slider.value + "px";
+  document.querySelectorAll(".highlight-word").forEach(span => {
+    span.style.fontSize = size;
+  });
 });
 </script>
     `);
