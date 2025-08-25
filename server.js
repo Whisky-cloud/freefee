@@ -1,109 +1,81 @@
 // server.js
 const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
+const axios = require("axios");
 
-// Google Cloud Translation API v2
+// Google Cloud Translation API v2 クライアント
 const { Translate } = require("@google-cloud/translate").v2;
+
+// Render 環境変数 GOOGLE_CREDENTIALS に JSON を丸ごと入れている前提
+let credentials;
+try {
+  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+} catch (e) {
+  console.error("❌ GOOGLE_CREDENTIALS が正しく設定されていません");
+  process.exit(1);
+}
+
+const projectId = credentials.project_id;
+
+const translate = new Translate({
+  projectId,
+  credentials,
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Render 環境変数 GOOGLE_CREDIENTIALS を利用
-let credentials;
-try {
-  credentials = JSON.parse(process.env.GOOGLE_CREDIENTIALS);
-} catch (e) {
-  console.error("❌ GOOGLE_CREDIENTIALS が正しく設定されていません");
-}
+// HTML タグを維持しつつテキストだけ翻訳
+async function translateHtmlPreserveTags(html, targetLang = "ja") {
+  const $ = cheerio.load(html);
 
-const translate = new Translate({
-  projectId: credentials.project_id,
-  credentials,
-});
-
-// テキストノードを <span> でラップする関数
-function wrapTextNodes($, element) {
-  element.contents().each(function () {
-    if (this.type === "text" && this.data.trim() !== "") {
-      const span = $("<span>")
-        .addClass("translatable")
-        .text(this.data);
-      $(this).replaceWith(span);
-    } else if (this.type === "tag") {
-      wrapTextNodes($, $(this));
+  async function translateTextNode(node) {
+    if (node.type === "text" && node.data.trim()) {
+      try {
+        const [translation] = await translate.translate(node.data, targetLang);
+        node.data = translation;
+      } catch (err) {
+        console.error("翻訳エラー:", err);
+      }
     }
-  });
-}
-
-// 指定されたページを翻訳して返す
-app.get("/proxy", async (req, res) => {
-  const targetUrl = req.query.url;
-  const lang = req.query.lang || "ja";
-
-  if (!targetUrl) {
-    return res.status(400).send("url パラメータが必要です");
+    if (node.children) {
+      for (const child of node.children) {
+        await translateTextNode(child);
+      }
+    }
   }
 
+  await translateTextNode($.root()[0]);
+  return $.html();
+}
+
+app.get("/", (req, res) => {
+  res.send("🌍 Translation Proxy Server is running!");
+});
+
+app.get("/translate", async (req, res) => {
+  const { url, lang } = req.query;
+  if (!url) {
+    return res.status(400).send("❌ URLを指定してください");
+  }
+  const targetLang = lang || "ja";
+
   try {
-    const response = await axios.get(targetUrl);
-    const $ = cheerio.load(response.data);
+    const response = await axios.get(url);
+    const originalHtml = response.data;
 
-    // テキストノードをラップ
-    wrapTextNodes($, $("body"));
+    const translatedHtml = await translateHtmlPreserveTags(
+      originalHtml,
+      targetLang
+    );
 
-    // すべての翻訳対象テキストを取得
-    const texts = $(".translatable")
-      .map((i, el) => $(el).text())
-      .get();
-
-    if (texts.length === 0) {
-      console.warn("⚠ 翻訳対象テキストが見つかりません");
-    }
-
-    // Google 翻訳 API で翻訳
-    let [translations] = await translate.translate(texts, lang);
-
-    if (!Array.isArray(translations)) {
-      translations = [translations];
-    }
-
-    $(".translatable").each(function (i) {
-      if (translations[i]) {
-        $(this).text(translations[i]);
-      }
-    });
-
-    // --- フォントサイズを相対的に +5px ---
-    // インライン style="" 内
-    $("[style]").each(function () {
-      let style = $(this).attr("style");
-      if (style) {
-        style = style.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
-          return `font-size:${parseInt(px) + 5}px`;
-        });
-        $(this).attr("style", style);
-      }
-    });
-
-    // <style> タグ内
-    $("style").each(function () {
-      let css = $(this).html();
-      if (css) {
-        css = css.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
-          return `font-size:${parseInt(px) + 5}px`;
-        });
-        $(this).html(css);
-      }
-    });
-
-    res.send($.html());
+    res.send(translatedHtml);
   } catch (err) {
-    console.error("❌ エラー詳細:", err.message);
-    res.status(500).send("エラーが発生しました");
+    console.error("取得/翻訳エラー:", err);
+    res.status(500).send("⚠️ エラーが発生しました");
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 サーバーがポート ${PORT} で起動しました`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
