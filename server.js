@@ -3,7 +3,8 @@ const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-const {Translate} = require("@google-cloud/translate").v2;
+// Google Cloud Translation API v2
+const { Translate } = require("@google-cloud/translate").v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,7 +14,7 @@ let credentials;
 try {
   credentials = JSON.parse(process.env.GOOGLE_CREDIENTIALS);
 } catch (e) {
-  console.error("GOOGLE_CREDIENTIALS が正しく設定されていません");
+  console.error("❌ GOOGLE_CREDIENTIALS が正しく設定されていません");
 }
 
 const translate = new Translate({
@@ -56,6 +57,10 @@ app.get("/proxy", async (req, res) => {
       .map((i, el) => $(el).text())
       .get();
 
+    if (texts.length === 0) {
+      console.warn("⚠ 翻訳対象テキストが見つかりません");
+    }
+
     // Google 翻訳 API で翻訳
     let [translations] = await translate.translate(texts, lang);
 
@@ -64,33 +69,41 @@ app.get("/proxy", async (req, res) => {
     }
 
     $(".translatable").each(function (i) {
-      $(this).text(translations[i]);
+      if (translations[i]) {
+        $(this).text(translations[i]);
+      }
     });
 
-    // フォントサイズを相対的に +5px
+    // --- フォントサイズを相対的に +5px ---
+    // インライン style="" 内
     $("[style]").each(function () {
       let style = $(this).attr("style");
-      style = style.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
-        return `font-size:${parseInt(px) + 5}px`;
-      });
-      $(this).attr("style", style);
+      if (style) {
+        style = style.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
+          return `font-size:${parseInt(px) + 5}px`;
+        });
+        $(this).attr("style", style);
+      }
     });
 
+    // <style> タグ内
     $("style").each(function () {
       let css = $(this).html();
-      css = css.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
-        return `font-size:${parseInt(px) + 5}px`;
-      });
-      $(this).html(css);
+      if (css) {
+        css = css.replace(/font-size\s*:\s*(\d+)px/gi, (_, px) => {
+          return `font-size:${parseInt(px) + 5}px`;
+        });
+        $(this).html(css);
+      }
     });
 
     res.send($.html());
   } catch (err) {
-    console.error(err);
+    console.error("❌ エラー詳細:", err.message);
     res.status(500).send("エラーが発生しました");
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`サーバーがポート ${PORT} で起動しました`);
+  console.log(`🚀 サーバーがポート ${PORT} で起動しました`);
 });
