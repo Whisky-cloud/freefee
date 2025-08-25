@@ -15,7 +15,7 @@ const translate = new Translate({
 
 app.use(express.urlencoded({ extended: true }));
 
-// URL入力フォーム（下部固定）
+// 下部固定URL入力フォーム
 const formHTML = `
 <form method="get" style="
   position: fixed;
@@ -38,14 +38,30 @@ app.get("/", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // 英単語を span でラップ（最小限）
-    const bodyHtml = $("body").html();
-    const wrapped = bodyHtml.replace(/\b([a-zA-Z]{2,})\b/g,
-      '<span class="highlight-word">$1</span>'
-    );
-    $("body").html(wrapped + formHTML);
+    // タグを保持しつつテキストノードだけ置換
+    function wrapTextNodes(node) {
+      node.contents().each(function () {
+        if (this.type === 'text') {
+          const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g,
+            '<span class="highlight-word">$1</span>'
+          );
+          $(this).replaceWith(wrapped);
+        } else if (this.type === 'tag') {
+          wrapTextNodes($(this));
+        }
+      });
+    }
 
-    // タップ辞書用 JS（ポップアップ表示）
+    wrapTextNodes($("body"));
+
+    // 古いタグや特殊タグのCSS補正
+    $("center").css("display", "block").css("text-align", "center");
+    $("pre").css("white-space", "pre-wrap").css("font-family", "monospace");
+
+    // 下部フォーム追加
+    $("body").append(formHTML);
+
+    // タップ翻訳ポップアップ JS
     $("body").append(`
 <div id="dict-popup" style="
   position: fixed;
@@ -72,9 +88,7 @@ async function lookup(word) {
     popup.innerText = word + " → " + data.translated;
     popup.style.display = "block";
     setTimeout(() => popup.style.display = "none", 5000);
-  } catch(e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 document.addEventListener("click", (e) => {
