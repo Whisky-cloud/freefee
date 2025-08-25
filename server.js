@@ -41,9 +41,18 @@ app.get("/", async (req, res) => {
   if (!targetUrl) return res.send(formHTML);
 
   try {
-    // 外部サイト取得
     const { data } = await axiosInstance.get(targetUrl);
     const $ = cheerio.load(data);
+
+    // --- head に meta viewport を追加（レスポンシブ対応） ---
+    const head = $("head");
+    if (head.length) {
+      if ($("meta[name='viewport']").length === 0) {
+        head.append('<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">');
+      }
+    } else {
+      $("html").prepend('<head><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"></head>');
+    }
 
     // --- 相対パスを絶対パスに変換 ---
     $("img").each(function () {
