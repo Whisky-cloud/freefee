@@ -24,7 +24,7 @@ try {
 
 app.use(express.urlencoded({ extended: true }));
 
-// 下部固定URL入力フォーム
+// 下部固定URL入力フォーム（2倍サイズ版）
 const formHTML = `
 <form method="get" style="
   position: fixed;
@@ -33,13 +33,16 @@ const formHTML = `
   transform: translateX(-50%);
   z-index: 9999;
   text-align: center;">
-  <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:16px;">
-  <button type="submit" style="height:40px;font-size:16px;padding:0 12px;">開く</button>
+  <input type="url" name="url" placeholder="英語サイトURL" 
+         style="width:100%; height:80px; padding:16px; font-size:32px;">
+  <button type="submit" style="height:80px; font-size:32px; padding:0 24px;">開く</button>
   <br>
-  <label for="font-slider" style="color:#000;">フォントサイズ調整:</label>
-  <input type="range" id="font-slider" min="10" max="80" value="30" style="width:200px;">
+  <label for="font-slider" style="color:#000; font-size:32px;">フォントサイズ調整:</label>
+  <input type="range" id="font-slider" min="10" max="80" value="30" 
+         style="width:400px; height:40px;">
 </form>
 `;
+
 
 // テキストノードを <span> でラップ
 function wrapTextNodes($, node) {
