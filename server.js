@@ -131,3 +131,14 @@ document.addEventListener("click", (e) => {
 app.get("/translate", async (req, res) => {
   const word = req.query.word;
   if (!word || !translate) return res.json({ translated: "" });
+
+  try {
+    const [translation] = await translate.translate(word, "ja");
+    res.json({ translated: translation });
+  } catch (err) {
+    console.error(err);
+    res.json({ translated: "翻訳エラー" });
+  }
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
