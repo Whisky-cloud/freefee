@@ -1,22 +1,24 @@
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
-const {Translate} = require("@google-cloud/translate").v2;
+const { Translate } = require("@google-cloud/translate").v2;
 const urlModule = require("url");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Google Translate API
-const projectId = process.env.GOOGLE_PROJECT_ID;
+// --- Google Translate API 初期化（サーバー起動時） ---
 const translate = new Translate({
-  projectId,
+  projectId: process.env.GOOGLE_PROJECT_ID,
   credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS)
 });
 
+// axios デフォルトタイムアウト延長（スリープ復帰対応）
+const axiosInstance = axios.create({ timeout: 15000 });
+
 app.use(express.urlencoded({ extended: true }));
 
-// 下部固定URL入力フォーム
+// --- 下部固定フォーム ---
 const formHTML = `
 <form method="get" style="
   position: fixed;
@@ -24,19 +26,23 @@ const formHTML = `
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
-  text-align: center;
-">
+  text-align: center;">
   <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:16px;">
   <button type="submit" style="height:40px;font-size:16px;padding:0 12px;">開く</button>
 </form>
 `;
 
+// --- ヘルスチェック用エンドポイント ---
+app.get("/health", (req, res) => res.send("OK"));
+
+// --- メインページ ---
 app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.send(formHTML);
 
   try {
-    const { data } = await axios.get(targetUrl);
+    // 外部サイト取得
+    const { data } = await axiosInstance.get(targetUrl);
     const $ = cheerio.load(data);
 
     // --- 相対パスを絶対パスに変換 ---
@@ -46,7 +52,6 @@ app.get("/", async (req, res) => {
         $(this).attr("src", urlModule.resolve(targetUrl, src));
       }
     });
-
     $("link, script").each(function () {
       const attr = $(this).is("link") ? "href" : "src";
       const val = $(this).attr(attr);
@@ -55,7 +60,7 @@ app.get("/", async (req, res) => {
       }
     });
 
-    // --- タグ保持 + テキストノードだけ置換 ---
+    // --- タグを保持してテキストノードだけラップ ---
     function wrapTextNodes(node) {
       node.contents().each(function () {
         if (this.type === 'text') {
@@ -68,17 +73,14 @@ app.get("/", async (req, res) => {
         }
       });
     }
-
     wrapTextNodes($("body"));
 
-    // 古いタグや特殊タグのCSS補正
+    // 古いタグのCSS補正
     $("center").css("display", "block").css("text-align", "center");
     $("pre").css("white-space", "pre-wrap").css("font-family", "monospace");
 
-    // 下部フォーム追加
+    // 下部フォームと翻訳ポップアップ JS 追加
     $("body").append(formHTML);
-
-    // タップ翻訳ポップアップ JS
     $("body").append(`
 <div id="dict-popup" style="
   position: fixed;
@@ -95,7 +97,6 @@ app.get("/", async (req, res) => {
   word-break: break-word;
   display: none;
 "></div>
-
 <script>
 async function lookup(word) {
   try {
@@ -117,14 +118,15 @@ document.addEventListener("click", (e) => {
     res.send($.html());
   } catch (err) {
     console.error(err);
-    res.status(500).send(formHTML + "<p style='color:red;'>ページを取得できませんでした</p>");
+    res.status(500).send(formHTML + "<p style='color:red;'>ページ取得失敗（初回アクセス遅延かも）</p>");
   }
 });
 
-// 翻訳 API
+// --- 翻訳 API ---
 app.get("/translate", async (req, res) => {
   const word = req.query.word;
   if (!word) return res.json({ translated: "" });
+
   try {
     const [translation] = await translate.translate(word, "ja");
     res.json({ translated: translation });
