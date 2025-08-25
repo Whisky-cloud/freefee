@@ -5,10 +5,10 @@
   "dependencies": {
     "express": "^4.18.2",
     "axios": "^1.7.0",
-    "cheerio": "^1.0.0-rc.12",
+    "cheerio": "^1.1.2",
     "@google-cloud/translate": "^7.0.0"
   },
   "engines": {
-    "node": "18.x"
+    "node": ">=20.18.1"
   }
 }
