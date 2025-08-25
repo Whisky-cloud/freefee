@@ -1,14 +1,11 @@
 {
-  "name": "taiyaku-browser",
+  "name": "font-bg-proxy",
   "version": "1.0.0",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
   "dependencies": {
     "express": "^4.18.2",
-    "axios": "^1.6.0",
+    "axios": "^1.7.0",
     "cheerio": "^1.0.0-rc.12",
-    "@vitalets/google-translate-api": "^8.0.0"
+    "@google-cloud/translate": "^7.0.0"
   }
 }
