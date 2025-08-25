@@ -32,14 +32,18 @@ const formHTML = `
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
-  text-align: center;">
-  <input type="url" name="url" placeholder="英語サイトURL" 
-         style="width:100%; height:80px; padding:16px; font-size:32px;">
+  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;">
+  
+  <input type="url" name="url" placeholder="英語サイトURL"
+         style="flex:1; height:80px; padding:16px; font-size:32px;">
+  
   <button type="submit" style="height:80px; font-size:32px; padding:0 24px;">開く</button>
-  <br>
-  <label for="font-slider" style="color:#000; font-size:32px;">フォントサイズ調整:</label>
-  <input type="range" id="font-slider" min="10" max="80" value="30" 
-         style="width:400px; height:40px;">
+  
+  <input type="range" id="font-slider" min="10" max="80" value="30"
+         style="width:400px; height:40px; accent-color: #5C3317;"> <!-- 濃い茶色 -->
 </form>
 `;
 
