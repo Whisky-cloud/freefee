@@ -93,6 +93,7 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
   color: #fff;            /* 白文字 */
   padding: 5px 10px;
   font-size: 22px;      /* fontサイズ */
+  font-family: "Noto Sans JP"; /* font */
   border-radius: 8px;     /* 角丸 */
   box-shadow: none;       /* 影なし */
   border: none;           /* 枠線なし */
