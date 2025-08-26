@@ -19,7 +19,7 @@ try {
   console.error("GOOGLE_CREDENTIALS が正しく設定されていません。翻訳機能は無効になります。");
 }
 
-// --- 下部固定フォーム HTML ---
+// --- 下部固定フォーム HTML（並び変更 + スライダー幅1.5倍） ---
 const formHTML = `
 <form method="get" action="/proxy" style="
   position: fixed;
@@ -27,11 +27,12 @@ const formHTML = `
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
-  text-align: center;">
-  
-  <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:80px;padding:8px;font-size:32px; display: inline-block;">
-  <button type="submit" style="height:80px;font-size:32px;padding:0 12px; display: inline-block;">開く</button>
-  <input type="range" id="font-slider" min="10" max="100" value="30" style="width:300px; accent-color: #5c3a21; vertical-align: middle; margin-left: 12px; display: inline-block;">
+  display: flex;
+  align-items: center;
+  gap: 10px;">
+  <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:80px;padding:8px;font-size:32px;">
+  <button type="submit" style="height:80px;font-size:32px;padding:0 12px;">開く</button>
+  <input type="range" id="font-slider" min="10" max="100" value="30" style="width:300px; accent-color: #5c3a21;">
 </form>
 
 <script>
