@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
@@ -28,30 +27,29 @@ const formHTML = `
   transform: translateX(-50%);
   z-index: 9999;
   text-align: center;">
-  <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:80px;padding:8px;font-size:32px;">
+  <input type="url" name="url" id="url-input" placeholder="英語サイトURL" style="width:50%;height:80px;padding:8px;font-size:32px;">
   <button type="submit" style="height:80px;font-size:32px;padding:0 12px;">開く</button>
   <input type="range" id="font-slider" min="10" max="100" value="30" style="width:200px; accent-color: #5c3a21;">
 </form>
 
 <script>
-document.getElementById("font-slider").addEventListener("input", function() {
-  document.body.style.fontSize = this.value + "px";
-});
+  // 最後に開いた URL を保持
+  const lastURL = localStorage.getItem("lastURL");
+  if(lastURL) {
+    const urlInput = document.getElementById("url-input");
+    urlInput.value = lastURL;
+  }
 
-// --- 追加: 最後に開いた URL を記憶 ---
-document.addEventListener("DOMContentLoaded", () => {
-  const urlInput = document.querySelector('input[name="url"]');
-  
-  // 保存されている URL をフォームにセット
-  const savedUrl = localStorage.getItem("lastUrl");
-  if (savedUrl) urlInput.value = savedUrl;
-
-  // 「開く」ボタン押下時に URL を保存
-  const form = urlInput.closest("form");
-  form.addEventListener("submit", () => {
-    localStorage.setItem("lastUrl", urlInput.value);
+  // URL 入力フォーム submit 時に localStorage に保存
+  document.querySelector("form").addEventListener("submit", function() {
+    const urlInput = document.getElementById("url-input");
+    localStorage.setItem("lastURL", urlInput.value);
   });
-});
+
+  // フォントスライダー
+  document.getElementById("font-slider").addEventListener("input", function() {
+    document.body.style.fontSize = this.value + "px";
+  });
 </script>
 `;
 
@@ -61,9 +59,9 @@ app.use(express.urlencoded({ extended: true }));
 function wrapTextNodes($, element) {
   element.contents().each(function () {
     if (this.type === "text" && this.data.trim() !== "") {
-      const words = this.data.split(/(\s+)/); // 空白を保持して分割
+      const words = this.data.split(/(\s+)/);
       const fragments = words.map(word => {
-        if (word.trim() === "") return word; // 空白はそのまま
+        if (word.trim() === "") return word;
         return $("<span>")
           .addClass("translatable")
           .text(word)
@@ -76,7 +74,7 @@ function wrapTextNodes($, element) {
   });
 }
 
-// --- ルート "/" をフォーム表示用に追加 ---
+// --- ルート "/" ---
 app.get("/", (req, res) => {
   res.send(formHTML);
 });
@@ -102,18 +100,21 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 .container, [class*="container"], table { max-width:100% !important; width:100% !important; }
 .translatable-tooltip {
   position: absolute;
-  background: #000;       /* 黒背景 */
-  color: #fff;            /* 白文字 */
+  background: #000;
+  color: #fff;
   padding: 5px 10px;
-  border-radius: 8px;     /* 角丸 */
-  box-shadow: none;       /* 影なし */
-  border: none;           /* 枠線なし */
+  border-radius: 8px;
+  box-shadow: none;
+  border: none;
   z-index: 10000;
   display: none;
 }
 </style>
 `;
     $("head").append(styleFix);
+
+    // --- フォームとスライダーを追加 ---
+    $("body").append(formHTML);
 
     // --- ツールチップ JS ---
     const tooltipScript = `
@@ -125,10 +126,9 @@ document.body.appendChild(tooltip);
 document.querySelectorAll(".translatable").forEach(el => {
   el.addEventListener("click", async function(e) {
     e.stopPropagation();
-    window.getSelection().removeAllRanges(); // 選択表示を消す
+    window.getSelection().removeAllRanges();
     const text = this.innerText;
 
-    // Google 翻訳 API に問い合わせ
     const response = await fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja");
     const data = await response.json();
 
@@ -151,7 +151,7 @@ document.addEventListener("click", () => { tooltip.style.display = "none"; });
   }
 });
 
-// --- 翻訳 API エンドポイント ---
+// --- 翻訳 API ---
 app.get("/translate", async (req, res) => {
   const text = req.query.text;
   const lang = req.query.lang || "ja";
