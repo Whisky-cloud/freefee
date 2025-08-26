@@ -31,7 +31,7 @@ const formHTML = `
   align-items: center;
   gap: 10px;">
   <input type="url" name="url" placeholder="英語サイトURL" style="width:80%;height:80px;padding:8px;font-size:32px;">
-  <button type="submit" style="height:80px;font-size:32px;padding:0 12px;">開く</button>
+  <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
   <input type="range" id="font-slider" min="10" max="100" value="30" style="width:500px; accent-color: #5c3a21;">
 </form>
 
