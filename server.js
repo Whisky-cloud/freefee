@@ -130,6 +130,7 @@ document.addEventListener("click", () => { tooltip.style.display = "none"; });
 </script>
 `;
     $("body").append(tooltipScript);
+    $("body").append(formHTML); // ★ これを戻したので翻訳ページにもフォーム（スライダー）が表示されます
 
     res.send($.html());
   } catch (err) {
