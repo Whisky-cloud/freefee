@@ -81,7 +81,7 @@ app.get("/proxy", async (req, res) => {
     wrapTextNodes($, $("body"));
 
     // --- CSS: 横幅制御、フォントサイズ指定 ---
-    $("body").css("font-size", "30px");
+    $("body").css("font-size", "40px");
     const styleFix = `
 <style>
 html, body { max-width:100%; overflow-x:hidden; }
