@@ -1,6 +1,8 @@
+// server.js
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
+
 const { Translate } = require("@google-cloud/translate").v2;
 
 const app = express();
@@ -15,102 +17,82 @@ try {
 }
 
 const translate = new Translate({
-  projectId: credentials?.project_id,
-  credentials,
+  projectId: credentials ? credentials.project_id : undefined,
+  credentials: credentials,
 });
 
-app.use(express.urlencoded({ extended: true }));
+// 下部固定フォーム（完成版2のUI）
+const formHTML =
+  '<form method="get" style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; text-align: center;">' +
+  '<input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:16px;">' +
+  '<button type="submit" style="height:40px;font-size:16px;padding:0 12px;margin-left:5px;">開く</button>' +
+  '<br><input type="range" id="fontSizeSlider" min="10" max="60" value="30" style="width:200px; margin-top:5px; accent-color:brown;">' +
+  '<input type="number" id="fontSizeInput" min="10" max="60" value="30" style="width:60px; margin-top:5px;">' +
+  '</form>';
 
-// UI HTML（完成版2）
-const uiHTML = `
-<div style="position: fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:9999; text-align:center;">
-  <input type="url" id="urlInput" placeholder="英語サイトURL" style="width:50%; height:80px; font-size:32px; padding:16px;">
-  <button id="openBtn" style="height:80px; font-size:32px; padding:0 24px;">開く</button>
-  <input type="range" id="fontSlider" min="10" max="60" value="30" style="width:200px; accent-color:#654321; height:40px; margin-left:20px;">
-</div>
+// URL入力ページ
+app.get("/", function (req, res) {
+  res.send(formHTML);
+});
 
-<script>
-const urlInput = document.getElementById("urlInput");
-const openBtn = document.getElementById("openBtn");
-const fontSlider = document.getElementById("fontSlider");
-
-openBtn.onclick = () => {
-  if(urlInput.value) {
-    window.location.href = "/proxy?url=" + encodeURIComponent(urlInput.value) + "&fontsize=" + fontSlider.value;
-  }
-};
-</script>
-`;
-
-// ページ取得＋翻訳＋ツールチップ
-app.get("/proxy", async (req, res) => {
+// 翻訳ページ
+app.get("/proxy", async function (req, res) {
   const targetUrl = req.query.url;
-  const fontSize = req.query.fontsize || 30;
+  const lang = req.query.lang || "ja";
 
-  if (!targetUrl) return res.send(uiHTML);
+  if (!targetUrl) {
+    return res.status(400).send("url パラメータが必要です");
+  }
 
   try {
     const response = await axios.get(targetUrl);
     const $ = cheerio.load(response.data);
 
-    // フォントサイズを全体に設定
-    $("body").css("font-size", fontSize + "px");
-
-    // テキストノードを <span> でラップ
+    // body内のテキストを <span> でラップ
     function wrapTextNodes(element) {
       element.contents().each(function () {
-        if(this.type === "text" && this.data.trim() !== "") {
-          const span = $("<span>").addClass("translatable").text(this.data).css("cursor","pointer");
+        if (this.type === "text" && this.data.trim() !== "") {
+          const span = $("<span>").addClass("translatable").text(this.data);
           $(this).replaceWith(span);
-        } else if(this.type === "tag") {
+        } else if (this.type === "tag") {
           wrapTextNodes($(this));
         }
       });
     }
     wrapTextNodes($("body"));
 
-    // 翻訳用 JS を追加
-    $("body").append(`
-<script>
-const translate = async (text) => {
-  const res = await fetch("/translate?text=" + encodeURIComponent(text));
-  const data = await res.json();
-  return data.translation;
-};
+    // 翻訳
+    const texts = $(".translatable")
+      .map(function (i, el) {
+        return $(el).text();
+      })
+      .get();
 
-document.querySelectorAll(".translatable").forEach(el => {
-  el.addEventListener("click", async (e) => {
-    const existingTip = document.getElementById("tooltip");
-    if(existingTip) existingTip.remove();
+    let [translations] = await translate.translate(texts, lang);
+    if (!Array.isArray(translations)) {
+      translations = [translations];
+    }
 
-    const tooltip = document.createElement("div");
-    tooltip.id = "tooltip";
-    tooltip.style.position = "absolute";
-    tooltip.style.background = "#ffffcc";
-    tooltip.style.border = "1px solid #333";
-    tooltip.style.padding = "8px";
-    tooltip.style.zIndex = 9999;
-    tooltip.style.maxWidth = "300px";
-    tooltip.style.fontSize = "18px";
+    $(".translatable").each(function (i) {
+      $(this).text(translations[i]);
+    });
 
-    tooltip.innerText = "翻訳中...";
-    document.body.appendChild(tooltip);
+    // デフォルトフォントサイズ30px
+    $("[style]").each(function () {
+      let style = $(this).attr("style");
+      style = style.replace(/font-size\s*:\s*\d+px/gi, "font-size:30px");
+      $(this).attr("style", style);
+    });
+    $("style").each(function () {
+      let css = $(this).html();
+      css = css.replace(/font-size\s*:\s*\d+px/gi, "font-size:30px");
+      $(this).html(css);
+    });
 
-    const rect = el.getBoundingClientRect();
-    tooltip.style.left = rect.left + window.scrollX + "px";
-    tooltip.style.top = rect.bottom + window.scrollY + 5 + "px";
-
-    const translation = await translate(el.innerText);
-    tooltip.innerText = translation;
-
-    setTimeout(()=>{ tooltip.remove(); }, 5000);
-  });
-});
-</script>
-    `);
-
-    // 元のUIを挿入
-    $("body").prepend(uiHTML);
+    // ツールチップで翻訳を表示
+    $(".translatable").attr("title", function () {
+      return $(this).text();
+    });
 
     res.send($.html());
   } catch (err) {
@@ -119,18 +101,7 @@ document.querySelectorAll(".translatable").forEach(el => {
   }
 });
 
-// 翻訳API用エンドポイント
-app.get("/translate", async (req, res) => {
-  const text = req.query.text;
-  if(!text) return res.json({translation:""});
-
-  try {
-    const [translation] = await translate.translate(text, "ja");
-    res.json({translation});
-  } catch (err) {
-    console.error(err);
-    res.json({translation:"翻訳エラー"});
-  }
+// サーバー起動
+app.listen(PORT, function () {
+  console.log("サーバー起動 " + PORT);
 });
-
-app.listen(PORT, ()=>console.log(\`サーバー起動 ${PORT}\`));
