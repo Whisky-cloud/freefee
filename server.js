@@ -92,7 +92,7 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
   background: #000;       /* 黒背景 */
   color: #fff;            /* 白文字 */
   padding: 5px 10px;
-  font-size: 18px;      /* fontサイズ */
+  font-size: 22px;      /* fontサイズ */
   border-radius: 8px;     /* 角丸 */
   box-shadow: none;       /* 影なし */
   border: none;           /* 枠線なし */
