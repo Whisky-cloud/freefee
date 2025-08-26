@@ -1,169 +1,112 @@
-// server.js
 const express = require("express");
-const axios = require("axios");
 const cheerio = require("cheerio");
-const urlModule = require("url");
+const axios = require("axios");
+
+// Google Cloud Translation API v2
 const { Translate } = require("@google-cloud/translate").v2;
+const projectId = process.env.GOOGLE_PROJECT_ID;
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+const translate = new Translate({ projectId, credentials });
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.static("public"));
 
-// Google Translate API 初期化
-let translate = null;
-try {
-  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-  translate = new Translate({
-    projectId: process.env.GOOGLE_PROJECT_ID,
-    credentials,
-  });
-} catch (e) {
-  console.error("GOOGLE_CREDENTIALS が未設定または不正です。翻訳機能は無効になります。");
-}
-
-app.use(express.urlencoded({ extended: true }));
-
-// 下部固定URL入力フォーム + フォントサイズ調整
-const formHTML = `
-<div style="
-  position: fixed;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999;
-  text-align: center;">
-  <input type="url" id="tap-url" placeholder="英語サイトURL" style="width:50%;height:40px;padding:8px;font-size:32px;">
-  <button onclick="openURL()" style="height:40px;font-size:32px;padding:0 12px;">開く</button>
-  <br>
-  <input type="range" id="font-slider" min="10" max="100" value="30" style="width:50%; height:32px; background-color:#5C4033; margin-top:8px;">
-  <input type="number" id="font-input" min="10" max="100" value="30" style="width:60px; height:32px; font-size:32px;">
-</div>
-
-<script>
-const slider = document.getElementById('font-slider');
-const fontInput = document.getElementById('font-input');
-
-slider.addEventListener('input', () => {
-  fontInput.value = slider.value;
-  document.body.style.fontSize = slider.value + 'px';
-});
-
-fontInput.addEventListener('change', () => {
-  let val = parseInt(fontInput.value);
-  if(isNaN(val)) val = 30;
-  val = Math.min(100, Math.max(10, val));
-  slider.value = val;
-  document.body.style.fontSize = val + 'px';
-});
-
-function openURL(){
-  const url = document.getElementById('tap-url').value;
-  if(url) window.location.href = "/?url=" + encodeURIComponent(url);
-}
-</script>
-`;
-
-app.get("/", async (req, res) => {
-  const targetUrl = req.query.url;
-  if (!targetUrl) return res.send(formHTML);
-
+app.get("/fetch", async (req, res) => {
   try {
-    const { data } = await axios.get(targetUrl);
-    const $ = cheerio.load(data);
+    const response = await axios.get(req.query.url);
+    const $ = cheerio.load(response.data);
 
-    // 相対パスを絶対パスに変換
-    $("img").each(function () {
-      const src = $(this).attr("src");
-      if (src && !src.startsWith("http")) {
-        $(this).attr("src", urlModule.resolve(targetUrl, src));
-      }
-    });
+    // <body> の中身をそのまま返す
+    res.send(`
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-size: 30px; line-height: 1.8; padding: 20px; }
+            input, button { font-size: 2em; padding: 10px; margin: 5px; }
+            input[type="range"] {
+              width: 300px;
+              accent-color: saddlebrown;
+              transform: scale(2);
+              margin-left: 20px;
+            }
+            #tooltip {
+              position: absolute;
+              background: rgba(0,0,0,0.8);
+              color: white;
+              padding: 10px;
+              border-radius: 8px;
+              display: none;
+              max-width: 300px;
+              z-index: 1000;
+            }
+          </style>
+        </head>
+        <body>
+          <div>
+            <input type="text" id="urlInput" placeholder="URLを入力" size="50">
+            <button id="loadBtn">開く</button>
+            <input type="range" id="fontSizeSlider" min="10" max="100" value="30">
+          </div>
+          <div id="content">${$("body").html()}</div>
+          <div id="tooltip"></div>
 
-    $("link, script").each(function () {
-      const attr = $(this).is("link") ? "href" : "src";
-      const val = $(this).attr(attr);
-      if (val && !val.startsWith("http")) {
-        $(this).attr(attr, urlModule.resolve(targetUrl, val));
-      }
-    });
+          <script>
+            const content = document.getElementById("content");
+            const tooltip = document.getElementById("tooltip");
 
-    // テキストノードを <span> でラップ
-    function wrapTextNodes(node) {
-      node.contents().each(function () {
-        if (this.type === 'text' && this.data.trim() !== '') {
-          const wrapped = this.data.replace(/\b([a-zA-Z]{2,})\b/g,
-            '<span class="highlight-word" style="cursor:pointer;">$1</span>'
-          );
-          $(this).replaceWith(wrapped);
-        } else if (this.type === 'tag') {
-          wrapTextNodes($(this));
-        }
-      });
-    }
+            // フォントサイズ調整
+            document.getElementById("fontSizeSlider").addEventListener("input", (e) => {
+              content.style.fontSize = e.target.value + "px";
+            });
 
-    wrapTextNodes($("body"));
+            // URLロード
+            document.getElementById("loadBtn").addEventListener("click", () => {
+              const url = document.getElementById("urlInput").value;
+              if (!url) return;
+              fetch("/fetch?url=" + encodeURIComponent(url))
+                .then(res => res.text())
+                .then(html => { document.body.innerHTML = html; });
+            });
 
-    // 古いタグや特殊タグのCSS補正
-    $("center").css("display", "block").css("text-align", "center");
-    $("pre").css("white-space", "pre-wrap").css("font-family", "monospace");
+            // クリックした要素のテキストを翻訳
+            content.addEventListener("click", async (e) => {
+              e.preventDefault();
+              let text = e.target.innerText;
+              if (!text || text.trim() === "") return;
 
-    // 下部フォーム追加
-    $("body").append(formHTML);
+              try {
+                const res = await fetch("/translate?text=" + encodeURIComponent(text));
+                const data = await res.json();
 
-    // タップ翻訳ポップアップ JS
-    $("body").append(`
-<div id="dict-popup" style="
-  position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0,0,0,0.9);
-  color: #fff;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 16px;
-  z-index: 9999;
-  max-width: 90%;
-  word-break: break-word;
-  display: none;
-"></div>
+                tooltip.innerText = data.translation;
+                tooltip.style.left = e.pageX + "px";
+                tooltip.style.top = e.pageY + "px";
+                tooltip.style.display = "block";
 
-<script>
-async function lookup(word){
-  try {
-    const res = await fetch("/translate?word=" + encodeURIComponent(word));
-    const data = await res.json();
-    const popup = document.getElementById("dict-popup");
-    popup.innerText = word + " → " + data.translated;
-    popup.style.display = "block";
-    setTimeout(()=>popup.style.display="none",5000);
-  } catch(e){console.error(e);}
-}
-
-document.addEventListener("click",(e)=>{
-  if(e.target.classList.contains("highlight-word")) lookup(e.target.innerText);
-});
-</script>
-`);
-
-    res.send($.html());
+                setTimeout(() => { tooltip.style.display = "none"; }, 5000);
+              } catch (err) {
+                console.error("翻訳エラー:", err);
+              }
+            });
+          </script>
+        </body>
+      </html>
+    `);
   } catch (err) {
-    console.error(err);
-    res.status(500).send(formHTML + "<p style='color:red;'>ページを取得できませんでした</p>");
+    res.status(500).send("取得エラー: " + err.message);
   }
 });
 
-// 翻訳 API
-app.get("/translate", async (req,res)=>{
-  const word = req.query.word;
-  if(!word) return res.json({translated:""});
-  if(!translate) return res.json({translated:"翻訳機能無効"});
-  try{
-    const [translation] = await translate.translate(word,"ja");
-    res.json({translated:translation});
-  }catch(err){
-    console.error(err);
-    res.json({translated:"翻訳エラー"});
+// 翻訳API
+app.get("/translate", async (req, res) => {
+  try {
+    let [translation] = await translate.translate(req.query.text, "ja");
+    res.json({ translation });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT,()=>console.log(`Server running on port ${PORT}`));
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log("サーバー起動 port " + port));
