@@ -21,7 +21,7 @@ try {
 
 // --- 下部固定フォーム HTML ---
 const formHTML = `
-<form method="get" style="
+<form method="get" action="/proxy" style="
   position: fixed;
   bottom: 10px;
   left: 50%;
@@ -31,7 +31,6 @@ const formHTML = `
   <input type="url" name="url" placeholder="英語サイトURL" style="width:50%;height:80px;padding:8px;font-size:32px;">
   <button type="submit" style="height:80px;font-size:32px;padding:0 12px;">開く</button>
   <input type="range" id="font-slider" min="10" max="100" value="30" style="width:200px; accent-color: #5c3a21;">
-</form>
 
 <script>
 document.getElementById("font-slider").addEventListener("input", function() {
