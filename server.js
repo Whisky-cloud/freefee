@@ -46,9 +46,9 @@ app.use(express.urlencoded({ extended: true }));
 function wrapTextNodes($, element) {
   element.contents().each(function () {
     if (this.type === "text" && this.data.trim() !== "") {
-      const words = this.data.split(/(\s+)/); // 空白を保持して分割
+      const words = this.data.split(/(\s+)/);
       const fragments = words.map(word => {
-        if (word.trim() === "") return word; // 空白はそのまま
+        if (word.trim() === "") return word;
         return $("<span>")
           .addClass("translatable")
           .text(word)
@@ -75,10 +75,8 @@ app.get("/proxy", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // --- テキストノードを単語単位でラップ ---
     wrapTextNodes($, $("body"));
 
-    // --- CSS: 横幅制御、フォントサイズ指定 ---
     $("body").css("font-size", "30px");
     const styleFix = `
 <style>
@@ -87,12 +85,12 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 .container, [class*="container"], table { max-width:100% !important; width:100% !important; }
 .translatable-tooltip {
   position: absolute;
-  background: #000;       /* 黒背景 */
-  color: #fff;            /* 白文字 */
+  background: #000;
+  color: #fff;
   padding: 5px 10px;
-  border-radius: 8px;     /* 角丸 */
-  box-shadow: none;       /* 影なし */
-  border: none;           /* 枠線なし */
+  border-radius: 8px;
+  box-shadow: none;
+  border: none;
   z-index: 10000;
   display: none;
 }
@@ -100,7 +98,6 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 `;
     $("head").append(styleFix);
 
-    // --- ツールチップ JS ---
     const tooltipScript = `
 <script>
 const tooltip = document.createElement("div");
@@ -110,10 +107,9 @@ document.body.appendChild(tooltip);
 document.querySelectorAll(".translatable").forEach(el => {
   el.addEventListener("click", async function(e) {
     e.stopPropagation();
-    window.getSelection().removeAllRanges(); // 選択表示を消す
+    window.getSelection().removeAllRanges();
     const text = this.innerText;
 
-    // Google 翻訳 API に問い合わせ
     const response = await fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja");
     const data = await response.json();
 
@@ -128,6 +124,9 @@ document.addEventListener("click", () => { tooltip.style.display = "none"; });
 </script>
 `;
     $("body").append(tooltipScript);
+
+    // --- 追加: 翻訳画面でも下部フォームを表示 ---
+    $("body").append(formHTML);
 
     res.send($.html());
   } catch (err) {
