@@ -87,11 +87,13 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 .container, [class*="container"], table { max-width:100% !important; width:100% !important; }
 .translatable-tooltip {
   position: absolute;
-  background: #fffbe0;
-  border: 1px solid #ccc;
+  background: #000;       /* 黒背景 */
+  color: #fff;            /* 白文字 */
   padding: 5px 10px;
+  border-radius: 8px;     /* 角丸 */
+  box-shadow: none;       /* 影なし */
+  border: none;           /* 枠線なし */
   z-index: 10000;
-  box-shadow: 2px 2px 6px rgba(0,0,0,0.3);
   display: none;
 }
 </style>
