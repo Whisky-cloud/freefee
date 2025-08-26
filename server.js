@@ -57,6 +57,11 @@ function wrapTextNodes($, element) {
   });
 }
 
+// --- 追加: ルート "/" をフォーム表示用に追加 ---
+app.get("/", (req, res) => {
+  res.send(formHTML);
+});
+
 // --- 指定ページを取得・翻訳 ---
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
@@ -89,7 +94,7 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 `;
     $("head").append(styleFix);
 
-    // --- ツールチップ JS 修正版 ---
+    // --- ツールチップ JS ---
     const tooltipScript = `
 <script>
 const tooltip = document.createElement("div");
@@ -99,9 +104,9 @@ document.body.appendChild(tooltip);
 document.querySelectorAll(".translatable").forEach(el => {
   el.addEventListener("click", async function(e) {
     e.stopPropagation();
-    const text = this.innerText;  // クリックした単語のみ取得
+    const text = this.innerText;
 
-    // 翻訳 API に問い合わせ
+    // Google 翻訳 API に問い合わせ
     const response = await fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja");
     const data = await response.json();
 
