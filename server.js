@@ -32,7 +32,7 @@ const formHTML = `
   gap: 10px;">
   <input type="url" name="url" placeholder="英語サイトURL" style="width:80%;height:80px;padding:8px;font-size:32px;">
   <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
-  <input type="range" id="font-slider" min="10" max="100" value="30" style="width:500px; accent-color: #5c3a21;">
+  <input type="range" id="font-slider" min="10" max="100" value="40" style="width:600px; accent-color: #5c3a21;">
 </form>
 
 <script>
