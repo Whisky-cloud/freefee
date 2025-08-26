@@ -42,22 +42,26 @@ document.getElementById("font-slider").addEventListener("input", function() {
 
 app.use(express.urlencoded({ extended: true }));
 
-// --- テキストノードを <span> でラップ ---
+// --- テキストノードを単語単位で <span> でラップ ---
 function wrapTextNodes($, element) {
   element.contents().each(function () {
     if (this.type === "text" && this.data.trim() !== "") {
-      const span = $("<span>")
-        .addClass("translatable")
-        .text(this.data)
-        .css("cursor", "pointer");
-      $(this).replaceWith(span);
+      const words = this.data.split(/(\s+)/); // 空白を保持して分割
+      const fragments = words.map(word => {
+        if (word.trim() === "") return word; // 空白はそのまま
+        return $("<span>")
+          .addClass("translatable")
+          .text(word)
+          .css("cursor", "pointer");
+      });
+      $(this).replaceWith(fragments);
     } else if (this.type === "tag") {
       wrapTextNodes($, $(this));
     }
   });
 }
 
-// --- 追加: ルート "/" をフォーム表示用に追加 ---
+// --- ルート "/" をフォーム表示用に追加 ---
 app.get("/", (req, res) => {
   res.send(formHTML);
 });
@@ -71,7 +75,7 @@ app.get("/proxy", async (req, res) => {
     const { data } = await axios.get(targetUrl);
     const $ = cheerio.load(data);
 
-    // --- テキストノードをラップ ---
+    // --- テキストノードを単語単位でラップ ---
     wrapTextNodes($, $("body"));
 
     // --- CSS: 横幅制御、フォントサイズ指定 ---
@@ -104,6 +108,7 @@ document.body.appendChild(tooltip);
 document.querySelectorAll(".translatable").forEach(el => {
   el.addEventListener("click", async function(e) {
     e.stopPropagation();
+    window.getSelection().removeAllRanges(); // 選択表示を消す
     const text = this.innerText;
 
     // Google 翻訳 API に問い合わせ
