@@ -89,7 +89,7 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 `;
     $("head").append(styleFix);
 
-    // --- ツールチップ JS ---
+    // --- ツールチップ JS 修正版 ---
     const tooltipScript = `
 <script>
 const tooltip = document.createElement("div");
@@ -99,9 +99,9 @@ document.body.appendChild(tooltip);
 document.querySelectorAll(".translatable").forEach(el => {
   el.addEventListener("click", async function(e) {
     e.stopPropagation();
-    const text = this.innerText;
+    const text = this.innerText;  // クリックした単語のみ取得
 
-    // Google 翻訳 API に問い合わせ
+    // 翻訳 API に問い合わせ
     const response = await fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja");
     const data = await response.json();
 
