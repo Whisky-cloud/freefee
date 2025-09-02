@@ -97,73 +97,7 @@ app.get("/", (req, res) => {
     </script>
   `;
   
-  res.send(`
-    <html>
-      <head>
-        <title>英語学習プロキシ</title>
-        <style>
-          body {
-            font-family: sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          }
-          .container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            text-align: center;
-          }
-          h1 {
-            margin-bottom: 30px;
-            color: #333;
-          }
-          .info {
-            margin-top: 20px;
-            color: #666;
-            font-size: 14px;
-          }
-          .clear-button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-          }
-          .clear-button:hover {
-            background: #ff5252;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>🌐 英語学習プロキシ</h1>
-          <form method="get" action="/proxy">${formHTML}</form>
-          <div class="info">
-            単語をクリックすると日本語訳が表示されます
-          </div>
-          <button class="clear-button" onclick="
-            if(confirm('保存されたURLとフォント設定をクリアしますか？')) {
-              localStorage.removeItem('lastProxyUrl');
-              localStorage.removeItem('fontSize');
-              localStorage.setItem('autoLoadLastUrl', 'false');
-              location.reload();
-            }
-          ">
-            履歴をクリア
-          </button>
-        </div>
-        ${autoLoadScript}
-      </body>
-    </html>
-  `);
+  res.send(`<form method="get" action="/proxy">${formHTML}</form>${autoLoadScript}`);
 });
 
 // クライアントサイド遅延処理版のプロキシ
@@ -212,14 +146,6 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
   position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8);
   color: #fff; padding: 10px 15px; border-radius: 5px; z-index: 10001;
   font-size: 14px;
-}
-.home-button {
-  position: fixed; top: 10px; left: 10px; background: #667eea;
-  color: white; padding: 10px 15px; border-radius: 5px; z-index: 10000;
-  text-decoration: none; font-size: 14px; font-weight: bold;
-}
-.home-button:hover {
-  background: #764ba2;
 }
 .google-search-popup {
   position: fixed;
@@ -391,27 +317,52 @@ async function processTextNodes() {
           // 英単語を含むテキストのみ処理
           if (!/[a-zA-Z]/.test(text)) continue;
           
-          // より細かく単語を分割（スペース、句読点、記号で分割）
-          const words = text.split(/(\s+|[,\\.!?;:"'()\\[\\]{}])/);
+          // 単語境界で分割する正規表現
+          // 英単語（アポストロフィ含む）とそれ以外を分離
+          const parts = [];
+          let lastIndex = 0;
           
-          if (words.length > 1) {
+          // 英単語（'sや'tなどを含む）にマッチする正規表現
+          const wordRegex = /[a-zA-Z]+(?:[''][a-zA-Z]+)*/g;
+          let match;
+          
+          while ((match = wordRegex.exec(text)) !== null) {
+            // マッチ前の部分（空白や記号）
+            if (match.index > lastIndex) {
+              parts.push({
+                text: text.substring(lastIndex, match.index),
+                isWord: false
+              });
+            }
+            // マッチした単語
+            parts.push({
+              text: match[0],
+              isWord: true
+            });
+            lastIndex = match.index + match[0].length;
+          }
+          
+          // 最後の部分
+          if (lastIndex < text.length) {
+            parts.push({
+              text: text.substring(lastIndex),
+              isWord: false
+            });
+          }
+          
+          if (parts.length > 0) {
             const fragment = document.createDocumentFragment();
             
-            words.forEach(word => {
-              if (!word) return;
-              
-              // 英単語パターン（より厳密に単一の単語を判定）
-              const isEnglishWord = /^[a-zA-Z]+([''][a-zA-Z]+)?$/.test(word.trim());
-              
-              if (isEnglishWord) {
-                // 単一の英単語の場合のみspanで囲む
+            parts.forEach(part => {
+              if (part.isWord) {
+                // 英単語はspanで囲む
                 const span = document.createElement('span');
                 span.className = 'translatable';
-                span.textContent = word;
+                span.textContent = part.text;
                 fragment.appendChild(span);
               } else {
-                // その他（空白、記号、数字など）はそのまま
-                fragment.appendChild(document.createTextNode(word));
+                // その他はそのまま
+                fragment.appendChild(document.createTextNode(part.text));
               }
             });
             
@@ -474,11 +425,6 @@ function setupTranslation() {
       const text = e.target.textContent.trim();
       if (!text) return;
       
-      // 単一の単語のみを取得（スペースで分割して最初の単語だけ）
-      const singleWord = text.split(/\s+/)[0].replace(/[^a-zA-Z']/g, '');
-      
-      if (!singleWord) return;
-      
       // ツールチップを即座に表示（ローディング状態）
       tooltip.textContent = '翻訳中...';
       tooltip.style.left = e.pageX + 10 + "px";
@@ -488,11 +434,11 @@ function setupTranslation() {
       // タイムアウトをクリア
       clearTimeout(hideTimeout);
       
-      fetch("/translate?text=" + encodeURIComponent(singleWord) + "&lang=ja")
+      fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja")
         .then(response => response.json())
         .then(data => {
           if (data.translation) {
-            tooltip.textContent = singleWord + ": " + data.translation;
+            tooltip.textContent = text + ": " + data.translation;
           } else {
             tooltip.textContent = '[翻訳できませんでした]';
           }
@@ -567,9 +513,6 @@ if (document.readyState === 'loading') {
 
     $("body").append(clientSideScript);
     $("body").append(formHTML);
-    
-    // ホームボタンを追加
-    $("body").append(`<a href="/" class="home-button">🏠 ホーム</a>`);
 
     res.send($.html());
   } catch (err) {
