@@ -1,4 +1,4 @@
-// server.js - クライアントサイド遅延処理版
+// server.js - 構文エラー修正版
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
@@ -19,32 +19,29 @@ try {
 }
 
 const formHTML = `
-<form method="get" action="/proxy" style="
-  position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
-  z-index: 9999; display: flex; align-items: center; gap: 10px;">
+<div style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
   <input type="url" name="url" placeholder="英語サイトURL" style="width:80%;height:80px;padding:8px;font-size:32px;">
   <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
   <input type="range" id="font-slider" min="20" max="70" value="40" style="width:600px; accent-color: #5c3a21;">
-</form>
+</div>
+
 <script>
-if (document.getElementById("font-slider")) {
-  document.getElementById("font-slider").addEventListener("input", function() {
-    document.body.style.fontSize = this.value + "px";
-  });
-}
+document.getElementById("font-slider").addEventListener("input", function() {
+  document.body.style.fontSize = this.value + "px";
+});
 </script>
 `;
 
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  res.send(formHTML);
+  res.send(`<form method="get" action="/proxy">${formHTML}</form>`);
 });
 
-// 高速版：サーバーサイドでは単語分割せず、クライアントで行う
+// クライアントサイド遅延処理版のプロキシ
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
-  if (!targetUrl) return res.send(formHTML);
+  if (!targetUrl) return res.redirect("/");
 
   try {
     const { data } = await axios.get(targetUrl, {
@@ -147,7 +144,7 @@ async function processTextNodes() {
 
     processed += batch.length;
     const progress = Math.round((processed / textNodes.length) * 100);
-    overlay.textContent = \`翻訳機能を準備中... \${progress}%\`;
+    overlay.textContent = '翻訳機能を準備中... ' + progress + '%';
 
     // UIをブロックしないよう少し待つ
     await new Promise(resolve => setTimeout(resolve, 1));
@@ -216,5 +213,5 @@ app.get("/translate", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(\`サーバー起動 \${PORT}\`);
+  console.log("サーバー起動 ポート:" + PORT);
 });
