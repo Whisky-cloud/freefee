@@ -1,14 +1,17 @@
 {
-  "name": "tap-translate",
+  "name": "english-translator-proxy",
   "version": "1.0.0",
   "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "express": "^4.18.2",
-    "axios": "^1.7.0",
-    "cheerio": "^1.1.2",
-    "@google-cloud/translate": "^7.0.0"
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "@google-cloud/translate": "^8.0.0"
   },
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=18.0.0"
   }
 }
