@@ -19,52 +19,56 @@ try {
 }
 
 const formHTML = `
-<div style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
-  <input type="url" id="url-input" name="url" placeholder="英語サイトURL" style="width:80%;height:80px;padding:8px;font-size:32px;">
-  <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
+<div id="proxy-form-container" style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
+  <form method="get" action="/proxy" style="display: flex; align-items: center; gap: 10px; margin: 0;">
+    <input type="url" id="url-input" name="url" placeholder="英語サイトURL" style="width:600px;height:80px;padding:8px;font-size:32px;">
+    <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
+  </form>
   <input type="range" id="font-slider" min="20" max="70" value="40" style="width:600px; accent-color: #5c3a21;">
 </div>
 
 <script>
 // URLの保存と復元
-const urlInput = document.getElementById("url-input");
-const fontSlider = document.getElementById("font-slider");
-
-// 保存されたURLがあれば復元
-const savedUrl = localStorage.getItem("lastProxyUrl");
-if (savedUrl && urlInput) {
-  urlInput.value = savedUrl;
-}
-
-// 保存されたフォントサイズがあれば復元
-const savedFontSize = localStorage.getItem("fontSize") || "40";
-if (fontSlider) {
-  fontSlider.value = savedFontSize;
-  document.body.style.fontSize = savedFontSize + "px";
-}
-
-// URLを入力したら保存
-if (urlInput) {
-  urlInput.addEventListener("change", function() {
-    localStorage.setItem("lastProxyUrl", this.value);
-  });
+(function() {
+  const urlInput = document.getElementById("url-input");
+  const fontSlider = document.getElementById("font-slider");
   
-  // フォームが送信される時も保存
-  const form = urlInput.closest("form");
-  if (form) {
-    form.addEventListener("submit", function() {
-      localStorage.setItem("lastProxyUrl", urlInput.value);
+  // 保存されたURLがあれば復元
+  const savedUrl = localStorage.getItem("lastProxyUrl");
+  if (savedUrl && urlInput) {
+    urlInput.value = savedUrl;
+  }
+  
+  // 保存されたフォントサイズがあれば復元
+  const savedFontSize = localStorage.getItem("fontSize") || "40";
+  if (fontSlider) {
+    fontSlider.value = savedFontSize;
+    document.body.style.fontSize = savedFontSize + "px";
+  }
+  
+  // URLを入力したら保存
+  if (urlInput) {
+    urlInput.addEventListener("change", function() {
+      localStorage.setItem("lastProxyUrl", this.value);
+    });
+    
+    // フォームが送信される時も保存
+    const form = urlInput.closest("form");
+    if (form) {
+      form.addEventListener("submit", function() {
+        localStorage.setItem("lastProxyUrl", urlInput.value);
+      });
+    }
+  }
+  
+  // フォントサイズ変更時に保存
+  if (fontSlider) {
+    fontSlider.addEventListener("input", function() {
+      document.body.style.fontSize = this.value + "px";
+      localStorage.setItem("fontSize", this.value);
     });
   }
-}
-
-// フォントサイズ変更時に保存
-if (fontSlider) {
-  fontSlider.addEventListener("input", function() {
-    document.body.style.fontSize = this.value + "px";
-    localStorage.setItem("fontSize", this.value);
-  });
-}
+})();
 </script>
 `;
 
