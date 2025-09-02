@@ -19,89 +19,23 @@ try {
 }
 
 const formHTML = `
-<div id="proxy-form-container" style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
-  <form method="get" action="/proxy" style="display: flex; align-items: center; gap: 10px; margin: 0;">
-    <input type="url" id="url-input" name="url" placeholder="英語サイトURL" style="width:600px;height:80px;padding:8px;font-size:32px;">
-    <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
-  </form>
+<div style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
+  <input type="url" name="url" placeholder="英語サイトURL" style="width:80%;height:80px;padding:8px;font-size:32px;">
+  <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
   <input type="range" id="font-slider" min="20" max="70" value="40" style="width:600px; accent-color: #5c3a21;">
 </div>
 
 <script>
-// URLの保存と復元
-(function() {
-  const urlInput = document.getElementById("url-input");
-  const fontSlider = document.getElementById("font-slider");
-  
-  // 保存されたURLがあれば復元
-  const savedUrl = localStorage.getItem("lastProxyUrl");
-  if (savedUrl && urlInput) {
-    urlInput.value = savedUrl;
-  }
-  
-  // 保存されたフォントサイズがあれば復元
-  const savedFontSize = localStorage.getItem("fontSize") || "40";
-  if (fontSlider) {
-    fontSlider.value = savedFontSize;
-    document.body.style.fontSize = savedFontSize + "px";
-  }
-  
-  // URLを入力したら保存
-  if (urlInput) {
-    urlInput.addEventListener("change", function() {
-      localStorage.setItem("lastProxyUrl", this.value);
-    });
-    
-    // フォームが送信される時も保存
-    const form = urlInput.closest("form");
-    if (form) {
-      form.addEventListener("submit", function() {
-        localStorage.setItem("lastProxyUrl", urlInput.value);
-      });
-    }
-  }
-  
-  // フォントサイズ変更時に保存
-  if (fontSlider) {
-    fontSlider.addEventListener("input", function() {
-      document.body.style.fontSize = this.value + "px";
-      localStorage.setItem("fontSize", this.value);
-    });
-  }
-})();
+document.getElementById("font-slider").addEventListener("input", function() {
+  document.body.style.fontSize = this.value + "px";
+});
 </script>
 `;
 
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  const autoLoadScript = `
-    <script>
-      // ページ読み込み時に、保存されたURLがあれば自動的に読み込む
-      window.addEventListener('DOMContentLoaded', function() {
-        const savedUrl = localStorage.getItem("lastProxyUrl");
-        const autoLoad = localStorage.getItem("autoLoadLastUrl");
-        
-        // 初回アクセス時は自動読み込みを有効にする
-        if (autoLoad === null) {
-          localStorage.setItem("autoLoadLastUrl", "true");
-        }
-        
-        // 自動読み込みが有効で、保存されたURLがある場合
-        if (savedUrl && localStorage.getItem("autoLoadLastUrl") === "true") {
-          // 自動読み込みフラグを一時的にオフにする（無限ループ防止）
-          localStorage.setItem("autoLoadLastUrl", "false");
-          // プロキシページへリダイレクト
-          window.location.href = "/proxy?url=" + encodeURIComponent(savedUrl);
-        } else {
-          // 自動読み込みフラグを次回のために有効に戻す
-          localStorage.setItem("autoLoadLastUrl", "true");
-        }
-      });
-    </script>
-  `;
-  
-  res.send(`<form method="get" action="/proxy">${formHTML}</form>${autoLoadScript}`);
+  res.send(`<form method="get" action="/proxy">${formHTML}</form>`);
 });
 
 // クライアントサイド遅延処理版のプロキシ
@@ -151,65 +85,6 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
   color: #fff; padding: 10px 15px; border-radius: 5px; z-index: 10001;
   font-size: 14px;
 }
-.google-search-popup {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  max-width: 800px;
-  height: 400px;
-  background: white;
-  border: 2px solid #ccc;
-  border-radius: 10px;
-  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-  z-index: 10002;
-  display: none;
-  flex-direction: column;
-}
-.google-search-header {
-  padding: 10px;
-  background: #f0f0f0;
-  border-bottom: 1px solid #ccc;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-radius: 8px 8px 0 0;
-}
-.google-search-title {
-  font-size: 14px;
-  font-weight: bold;
-  color: #333;
-}
-.google-search-close {
-  background: #ff6b6b;
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.google-search-iframe {
-  flex: 1;
-  width: 100%;
-  border: none;
-  border-radius: 0 0 8px 8px;
-}
-.selection-menu {
-  position: absolute;
-  background: #333;
-  color: white;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 12px;
-  cursor: pointer;
-  z-index: 10001;
-  display: none;
-}
-.selection-menu:hover {
-  background: #555;
-}
 </style>
 `;
     $("head").append(styleFix);
@@ -229,30 +104,6 @@ document.body.appendChild(overlay);
 const tooltip = document.createElement("div");
 tooltip.className = "translatable-tooltip";
 document.body.appendChild(tooltip);
-
-// Google検索ポップアップを作成
-const searchPopup = document.createElement('div');
-searchPopup.className = 'google-search-popup';
-searchPopup.innerHTML = \`
-  <div class="google-search-header">
-    <span class="google-search-title">Google検索</span>
-    <button class="google-search-close">閉じる</button>
-  </div>
-  <iframe class="google-search-iframe"></iframe>
-\`;
-document.body.appendChild(searchPopup);
-
-// 選択メニューを作成
-const selectionMenu = document.createElement('div');
-selectionMenu.className = 'selection-menu';
-selectionMenu.textContent = '🔍 Google検索';
-document.body.appendChild(selectionMenu);
-
-// 閉じるボタンのイベント
-searchPopup.querySelector('.google-search-close').addEventListener('click', () => {
-  searchPopup.style.display = 'none';
-  searchPopup.querySelector('.google-search-iframe').src = '';
-});
 
 // 非同期で単語を分割してクリック可能にする
 async function processTextNodes() {
@@ -413,12 +264,38 @@ function setupTranslation() {
   console.log('Setting up translation event listeners...');
   
   let hideTimeout;
+  let selectionTimeout;
+  
+  // 翻訳を表示する共通関数
+  function showTranslation(text, x, y) {
+    if (!text || !text.trim()) return;
+    
+    // ツールチップを即座に表示（ローディング状態）
+    tooltip.textContent = '翻訳中...';
+    tooltip.style.left = x + 10 + "px";
+    tooltip.style.top = y + 10 + "px";
+    tooltip.style.display = "block";
+    
+    // タイムアウトをクリア
+    clearTimeout(hideTimeout);
+    
+    fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja")
+      .then(response => response.json())
+      .then(data => {
+        if (data.translation) {
+          tooltip.textContent = text + ": " + data.translation;
+        } else {
+          tooltip.textContent = '[翻訳できませんでした]';
+        }
+      })
+      .catch(err => {
+        console.error('Translation error:', err);
+        tooltip.textContent = '[エラー]';
+      });
+  }
   
   // 単語クリックで翻訳
   document.addEventListener('click', (e) => {
-    // 選択メニューを隠す
-    selectionMenu.style.display = 'none';
-    
     if (e.target.classList.contains('translatable')) {
       e.preventDefault();
       e.stopPropagation();
@@ -427,30 +304,7 @@ function setupTranslation() {
       window.getSelection().removeAllRanges();
       
       const text = e.target.textContent.trim();
-      if (!text) return;
-      
-      // ツールチップを即座に表示（ローディング状態）
-      tooltip.textContent = '翻訳中...';
-      tooltip.style.left = e.pageX + 10 + "px";
-      tooltip.style.top = e.pageY + 10 + "px";
-      tooltip.style.display = "block";
-      
-      // タイムアウトをクリア
-      clearTimeout(hideTimeout);
-      
-      fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja")
-        .then(response => response.json())
-        .then(data => {
-          if (data.translation) {
-            tooltip.textContent = text + ": " + data.translation;
-          } else {
-            tooltip.textContent = '[翻訳できませんでした]';
-          }
-        })
-        .catch(err => {
-          console.error('Translation error:', err);
-          tooltip.textContent = '[エラー]';
-        });
+      showTranslation(text, e.pageX, e.pageY);
     } else {
       // クリック位置がツールチップ以外の場合は隠す
       hideTimeout = setTimeout(() => {
@@ -459,36 +313,35 @@ function setupTranslation() {
     }
   });
   
-  // テキスト選択時の処理
+  // テキスト選択時の翻訳処理
   document.addEventListener('mouseup', (e) => {
-    const selection = window.getSelection();
-    const selectedText = selection.toString().trim();
+    // 選択タイムアウトをクリア
+    clearTimeout(selectionTimeout);
     
-    if (selectedText && selectedText.length > 0) {
-      // 選択メニューを表示
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
+    // 少し遅延させて選択が完了するのを待つ
+    selectionTimeout = setTimeout(() => {
+      const selection = window.getSelection();
+      const selectedText = selection.toString().trim();
       
-      selectionMenu.style.left = rect.left + (rect.width / 2) - 40 + 'px';
-      selectionMenu.style.top = rect.bottom + window.scrollY + 5 + 'px';
-      selectionMenu.style.display = 'block';
-      
-      // メニュークリック時にGoogle検索
-      selectionMenu.onclick = (e) => {
-        e.stopPropagation();
-        const searchQuery = encodeURIComponent(selectedText);
-        const searchUrl = 'https://www.google.com/search?q=' + searchQuery + '&igu=1';
+      // テキストが選択されていて、ツールチップ内のテキストでない場合
+      if (selectedText && selectedText.length > 0 && !tooltip.contains(e.target)) {
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
         
-        searchPopup.querySelector('.google-search-title').textContent = 
-          'Google検索: ' + (selectedText.length > 30 ? selectedText.substring(0, 30) + '...' : selectedText);
-        searchPopup.querySelector('.google-search-iframe').src = searchUrl;
-        searchPopup.style.display = 'flex';
-        
-        selectionMenu.style.display = 'none';
-        selection.removeAllRanges();
-      };
-    } else if (e.target !== selectionMenu) {
-      selectionMenu.style.display = 'none';
+        // 選択したテキストの翻訳を表示
+        showTranslation(selectedText, rect.left + (rect.width / 2) - 10, rect.bottom + window.scrollY);
+      }
+    }, 200);
+  });
+  
+  // 選択解除時にツールチップを隠す
+  document.addEventListener('selectionchange', () => {
+    const selection = window.getSelection();
+    if (!selection.toString()) {
+      clearTimeout(selectionTimeout);
+      hideTimeout = setTimeout(() => {
+        tooltip.style.display = "none";
+      }, 300);
     }
   });
   
@@ -517,6 +370,9 @@ if (document.readyState === 'loading') {
 
     $("body").append(clientSideScript);
     $("body").append(formHTML);
+    
+    // ホームボタンを追加
+    $("body").append(`<a href="/" class="home-button">🏠 ホーム</a>`);
 
     res.send($.html());
   } catch (err) {
