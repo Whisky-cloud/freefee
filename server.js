@@ -1,4 +1,4 @@
-// server.js - 構文エラー修正版
+// server.js - 修正版
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
@@ -46,7 +46,10 @@ app.get("/proxy", async (req, res) => {
   try {
     const { data } = await axios.get(targetUrl, {
       timeout: 30000,
-      maxContentLength: 10 * 1024 * 1024 // 10MB制限
+      maxContentLength: 10 * 1024 * 1024,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
     });
     
     const $ = cheerio.load(data);
@@ -67,8 +70,16 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
   position: absolute; background: #000; color: #fff; padding: 5px 10px;
   font-size: 22px; font-family: "Noto Sans JP"; font-weight: 400;
   border-radius: 8px; z-index: 10000; display: none;
+  pointer-events: none;
 }
-.translatable { cursor: pointer; }
+.translatable { 
+  cursor: pointer; 
+  text-decoration: underline dotted #ccc;
+  text-underline-offset: 2px;
+}
+.translatable:hover {
+  background-color: #ffffcc;
+}
 .processing-overlay {
   position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8);
   color: #fff; padding: 10px 15px; border-radius: 5px; z-index: 10001;
@@ -78,9 +89,12 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
 `;
     $("head").append(styleFix);
 
-    // クライアントサイドで遅延処理するスクリプト
+    // クライアントサイドで遅延処理するスクリプト（修正版）
     const clientSideScript = `
 <script>
+// デバッグ用コンソール出力
+console.log('Translation script starting...');
+
 // 進捗表示
 const overlay = document.createElement('div');
 overlay.className = 'processing-overlay';
@@ -93,96 +107,196 @@ document.body.appendChild(tooltip);
 
 // 非同期で単語を分割してクリック可能にする
 async function processTextNodes() {
-  const walker = document.createTreeWalker(
-    document.body,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode: function(node) {
-        // スクリプトタグやスタイルタグ内のテキストは除外
-        const parent = node.parentElement;
-        if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-      }
-    }
-  );
-
-  const textNodes = [];
-  let node;
-  while (node = walker.nextNode()) {
-    textNodes.push(node);
-  }
-
-  const batchSize = 20;
-  let processed = 0;
-
-  for (let i = 0; i < textNodes.length; i += batchSize) {
-    const batch = textNodes.slice(i, i + batchSize);
+  try {
+    console.log('Starting text node processing...');
     
-    batch.forEach(textNode => {
-      const text = textNode.textContent;
-      const words = text.split(/(\\s+)/);
-      
-      if (words.length > 1) {
-        const fragment = document.createDocumentFragment();
-        
-        words.forEach(word => {
-          if (word.trim() === '') {
-            fragment.appendChild(document.createTextNode(word));
-          } else {
-            const span = document.createElement('span');
-            span.className = 'translatable';
-            span.textContent = word;
-            fragment.appendChild(span);
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: function(node) {
+          // スクリプトタグやスタイルタグ、フォーム内のテキストは除外
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          
+          const tagName = parent.tagName;
+          if (tagName === 'SCRIPT' || tagName === 'STYLE' || tagName === 'NOSCRIPT') {
+            return NodeFilter.FILTER_REJECT;
           }
-        });
-        
-        textNode.parentNode.replaceChild(fragment, textNode);
+          
+          // フォーム要素内のテキストも除外
+          if (parent.closest('form') && parent.closest('[style*="position: fixed"]')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          
+          // 処理済みのものは除外
+          if (parent.classList && parent.classList.contains('translatable')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          
+          return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
       }
-    });
+    );
 
-    processed += batch.length;
-    const progress = Math.round((processed / textNodes.length) * 100);
-    overlay.textContent = '翻訳機能を準備中... ' + progress + '%';
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+      textNodes.push(node);
+    }
 
-    // UIをブロックしないよう少し待つ
-    await new Promise(resolve => setTimeout(resolve, 1));
+    console.log('Found ' + textNodes.length + ' text nodes to process');
+
+    if (textNodes.length === 0) {
+      console.log('No text nodes found, completing setup');
+      overlay.textContent = '翻訳機能を準備中... 100%';
+      setTimeout(() => {
+        overlay.remove();
+        setupTranslation();
+      }, 500);
+      return;
+    }
+
+    const batchSize = 10; // バッチサイズを小さくして安定性向上
+    let processed = 0;
+
+    for (let i = 0; i < textNodes.length; i += batchSize) {
+      const batch = textNodes.slice(i, i + batchSize);
+      
+      for (const textNode of batch) {
+        try {
+          // ノードが既に削除されていないか確認
+          if (!textNode.parentNode) continue;
+          
+          const text = textNode.textContent;
+          // 英単語を含むテキストのみ処理
+          if (!/[a-zA-Z]/.test(text)) continue;
+          
+          const words = text.split(/(\s+)/);
+          
+          if (words.length > 1) {
+            const fragment = document.createDocumentFragment();
+            
+            words.forEach(word => {
+              if (word.trim() === '' || /^\s+$/.test(word)) {
+                // 空白文字はそのまま
+                fragment.appendChild(document.createTextNode(word));
+              } else if (/^[a-zA-Z]+/.test(word)) {
+                // 英単語の場合のみspanで囲む
+                const span = document.createElement('span');
+                span.className = 'translatable';
+                span.textContent = word;
+                fragment.appendChild(span);
+              } else {
+                // その他（記号など）はそのまま
+                fragment.appendChild(document.createTextNode(word));
+              }
+            });
+            
+            // ノードがまだ存在することを確認してから置換
+            if (textNode.parentNode) {
+              textNode.parentNode.replaceChild(fragment, textNode);
+            }
+          }
+        } catch (err) {
+          console.error('Error processing node:', err);
+        }
+      }
+
+      processed += batch.length;
+      const progress = Math.min(99, Math.round((processed / textNodes.length) * 100));
+      overlay.textContent = '翻訳機能を準備中... ' + progress + '%';
+
+      // UIをブロックしないよう少し待つ
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    // 処理完了を確実に
+    console.log('Processing complete, setting up translation...');
+    overlay.textContent = '翻訳機能を準備中... 100%';
+    
+    setTimeout(() => {
+      overlay.remove();
+      setupTranslation();
+      console.log('Translation setup complete');
+    }, 500);
+    
+  } catch (error) {
+    console.error('Error in processTextNodes:', error);
+    overlay.textContent = 'エラーが発生しました';
+    setTimeout(() => {
+      overlay.remove();
+      setupTranslation(); // エラーでも翻訳機能は有効化
+    }, 2000);
   }
-
-  // 処理完了
-  overlay.remove();
-  setupTranslation();
 }
 
 // 翻訳機能を設定
 function setupTranslation() {
+  console.log('Setting up translation event listeners...');
+  
+  let hideTimeout;
+  
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('translatable')) {
+      e.preventDefault();
       e.stopPropagation();
+      
+      // 既存の選択をクリア
       window.getSelection().removeAllRanges();
       
-      const text = e.target.textContent;
+      const text = e.target.textContent.trim();
+      if (!text) return;
+      
+      // ツールチップを即座に表示（ローディング状態）
+      tooltip.textContent = '翻訳中...';
+      tooltip.style.left = e.pageX + 10 + "px";
+      tooltip.style.top = e.pageY + 10 + "px";
+      tooltip.style.display = "block";
+      
+      // タイムアウトをクリア
+      clearTimeout(hideTimeout);
       
       fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja")
         .then(response => response.json())
         .then(data => {
-          tooltip.textContent = data.translation;
-          tooltip.style.left = e.pageX + 10 + "px";
-          tooltip.style.top = e.pageY + 10 + "px";
-          tooltip.style.display = "block";
+          if (data.translation) {
+            tooltip.textContent = data.translation;
+          } else {
+            tooltip.textContent = '[翻訳できませんでした]';
+          }
+        })
+        .catch(err => {
+          console.error('Translation error:', err);
+          tooltip.textContent = '[エラー]';
         });
     } else {
-      tooltip.style.display = "none";
+      // クリック位置がツールチップ以外の場合は隠す
+      hideTimeout = setTimeout(() => {
+        tooltip.style.display = "none";
+      }, 300);
     }
+  });
+  
+  // ツールチップの上にマウスがある時は隠さない
+  tooltip.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimeout);
+  });
+  
+  tooltip.addEventListener('mouseleave', () => {
+    hideTimeout = setTimeout(() => {
+      tooltip.style.display = "none";
+    }, 300);
   });
 }
 
 // DOMが読み込まれたら処理開始
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', processTextNodes);
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(processTextNodes, 100); // 少し遅延させて確実に実行
+  });
 } else {
-  processTextNodes();
+  setTimeout(processTextNodes, 100);
 }
 </script>
 `;
@@ -192,8 +306,12 @@ if (document.readyState === 'loading') {
 
     res.send($.html());
   } catch (err) {
-    console.error(err);
-    res.status(500).send("エラーが発生しました");
+    console.error('Proxy error:', err);
+    res.status(500).send(`
+      <h1>エラーが発生しました</h1>
+      <p>${err.message}</p>
+      <a href="/">戻る</a>
+    `);
   }
 });
 
@@ -201,17 +319,25 @@ app.get("/translate", async (req, res) => {
   const text = req.query.text;
   const lang = req.query.lang || "ja";
 
-  if (!translate || !text) return res.json({ translation: "[翻訳機能未設定]" });
+  if (!text) {
+    return res.json({ translation: "" });
+  }
+
+  if (!translate) {
+    console.log('Translation API not configured, returning placeholder');
+    return res.json({ translation: `[${text}]` });
+  }
 
   try {
     const [translation] = await translate.translate(text, lang);
     res.json({ translation });
   } catch (err) {
-    console.error(err);
-    res.json({ translation: "[翻訳エラー]" });
+    console.error('Translation error:', err);
+    res.json({ translation: `[翻訳エラー: ${text}]` });
   }
 });
 
 app.listen(PORT, () => {
-  console.log("サーバー起動 ポート:" + PORT);
+  console.log(`サーバー起動 ポート: ${PORT}`);
+  console.log(`翻訳API: ${translate ? '有効' : '無効（GOOGLE_CREDENTIALSを設定してください）'}`);
 });
