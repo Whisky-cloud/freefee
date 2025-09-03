@@ -366,6 +366,7 @@ function setupTranslation() {
   
   let hideTimeout;
   let selectionTimeout;
+  let isSelecting = false;
   
   // 翻訳を表示する共通関数
   function showTranslation(text, x, y) {
@@ -397,6 +398,12 @@ function setupTranslation() {
   
   // 単語クリックで翻訳
   document.addEventListener('click', (e) => {
+    // 選択中の場合はクリックイベントを処理しない
+    if (isSelecting) {
+      isSelecting = false;
+      return;
+    }
+    
     if (e.target.classList.contains('translatable')) {
       e.preventDefault();
       e.stopPropagation();
@@ -417,6 +424,11 @@ function setupTranslation() {
     }
   });
   
+  // マウスダウンで選択開始を検出
+  document.addEventListener('mousedown', (e) => {
+    isSelecting = false;
+  });
+  
   // テキスト選択時の翻訳処理
   document.addEventListener('mouseup', (e) => {
     // 選択タイムアウトをクリア
@@ -428,26 +440,28 @@ function setupTranslation() {
       const selectedText = selection.toString().trim();
       
       // テキストが選択されていて、ツールチップ内のテキストでない場合
-      if (selectedText && selectedText.length > 0 && !tooltip.contains(e.target)) {
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
+      if (selectedText && selectedText.length > 1 && !tooltip.contains(e.target)) {
+        isSelecting = true; // 選択があったことをマーク
         
-        // 選択したテキストの翻訳を表示
-        showTranslation(selectedText, rect.left + (rect.width / 2) - 10, rect.bottom + window.scrollY);
-        
-        // 選択後はツールチップを表示し続ける
-        clearTimeout(hideTimeout);
+        // 選択範囲の位置を取得
+        try {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          
+          // 選択したテキストの翻訳を表示
+          showTranslation(
+            selectedText, 
+            rect.left + (rect.width / 2) - 10, 
+            rect.bottom + window.scrollY
+          );
+          
+          // 選択後はツールチップを表示し続ける
+          clearTimeout(hideTimeout);
+        } catch (err) {
+          console.error('Error getting selection range:', err);
+        }
       }
-    }, 200);
-  });
-  
-  // 選択解除時にツールチップを隠す（ただし、ツールチップ上でない場合のみ）
-  document.addEventListener('selectionchange', () => {
-    const selection = window.getSelection();
-    if (!selection.toString()) {
-      clearTimeout(selectionTimeout);
-      // 選択が解除されてもすぐには消さない
-    }
+    }, 300); // 少し遅延を増やす
   });
   
   // ツールチップの上にマウスがある時は隠さない
@@ -459,6 +473,14 @@ function setupTranslation() {
     hideTimeout = setTimeout(() => {
       tooltip.style.display = "none";
     }, 1000); // 1秒後に消える
+  });
+  
+  // ESCキーでツールチップを隠す
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      tooltip.style.display = "none";
+      window.getSelection().removeAllRanges();
+    }
   });
 }
 
