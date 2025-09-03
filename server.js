@@ -174,9 +174,7 @@ img, video, iframe, canvas { max-width:100%; height:auto; }
   pointer-events: none;
 }
 .translatable { 
-  cursor: pointer; 
-  text-decoration: underline dotted #ccc;
-  text-underline-offset: 2px;
+  cursor: pointer;
 }
 .translatable:hover {
   background-color: #ffffcc;
@@ -365,8 +363,7 @@ function setupTranslation() {
   console.log('Setting up translation event listeners...');
   
   let hideTimeout;
-  let selectionTimeout;
-  let isSelecting = false;
+  let lastTapTime = 0;
   
   // 翻訳を表示する共通関数
   function showTranslation(text, x, y) {
@@ -396,17 +393,18 @@ function setupTranslation() {
       });
   }
   
-  // 単語クリックで翻訳
+  // 単語クリック/タップで翻訳
   document.addEventListener('click', (e) => {
-    // 選択中の場合はクリックイベントを処理しない
-    if (isSelecting) {
-      isSelecting = false;
-      return;
-    }
-    
     if (e.target.classList.contains('translatable')) {
       e.preventDefault();
       e.stopPropagation();
+      
+      // ダブルタップの防止
+      const currentTime = new Date().getTime();
+      if (currentTime - lastTapTime < 300) {
+        return;
+      }
+      lastTapTime = currentTime;
       
       // 既存の選択をクリア
       window.getSelection().removeAllRanges();
@@ -414,7 +412,7 @@ function setupTranslation() {
       const text = e.target.textContent.trim();
       showTranslation(text, e.pageX, e.pageY);
       
-      // クリック後はツールチップを表示し続ける（消さない）
+      // クリック後はツールチップを表示し続ける
       clearTimeout(hideTimeout);
     } else if (!tooltip.contains(e.target)) {
       // ツールチップ以外の場所をクリックした場合のみ隠す
@@ -424,55 +422,106 @@ function setupTranslation() {
     }
   });
   
-  // マウスダウンで選択開始を検出
-  document.addEventListener('mousedown', (e) => {
-    isSelecting = false;
-  });
+  // iOS向け：選択変更イベントで翻訳を表示
+  let selectionCheckInterval = null;
+  let lastSelectedText = '';
   
-  // テキスト選択時の翻訳処理
-  document.addEventListener('mouseup', (e) => {
-    // 選択タイムアウトをクリア
-    clearTimeout(selectionTimeout);
+  // 選択を定期的にチェック（iOS対応）
+  function startSelectionCheck() {
+    if (selectionCheckInterval) return;
     
-    // 少し遅延させて選択が完了するのを待つ
-    selectionTimeout = setTimeout(() => {
+    selectionCheckInterval = setInterval(() => {
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
       
-      // テキストが選択されていて、ツールチップ内のテキストでない場合
-      if (selectedText && selectedText.length > 1 && !tooltip.contains(e.target)) {
-        isSelecting = true; // 選択があったことをマーク
+      // 新しい選択があり、前回と異なる場合
+      if (selectedText && selectedText.length > 1 && selectedText !== lastSelectedText) {
+        lastSelectedText = selectedText;
         
-        // 選択範囲の位置を取得
         try {
           const range = selection.getRangeAt(0);
           const rect = range.getBoundingClientRect();
           
           // 選択したテキストの翻訳を表示
           showTranslation(
-            selectedText, 
-            rect.left + (rect.width / 2) - 10, 
+            selectedText,
+            rect.left + rect.width / 2 - 10,
             rect.bottom + window.scrollY
           );
           
-          // 選択後はツールチップを表示し続ける
           clearTimeout(hideTimeout);
         } catch (err) {
-          console.error('Error getting selection range:', err);
+          console.error('Error getting selection:', err);
         }
+      } else if (!selectedText && lastSelectedText) {
+        // 選択が解除された
+        lastSelectedText = '';
+        stopSelectionCheck();
       }
-    }, 300); // 少し遅延を増やす
+    }, 500); // 0.5秒ごとにチェック
+  }
+  
+  function stopSelectionCheck() {
+    if (selectionCheckInterval) {
+      clearInterval(selectionCheckInterval);
+      selectionCheckInterval = null;
+    }
+  }
+  
+  // タッチ開始で選択チェックを開始（iOS向け）
+  document.addEventListener('touchstart', () => {
+    startSelectionCheck();
   });
   
-  // ツールチップの上にマウスがある時は隠さない
+  // タッチ終了後も少し続ける
+  document.addEventListener('touchend', () => {
+    setTimeout(() => {
+      const selection = window.getSelection();
+      if (!selection.toString()) {
+        stopSelectionCheck();
+      }
+    }, 1000);
+  });
+  
+  // デスクトップ向け：マウスでの選択
+  document.addEventListener('mouseup', (e) => {
+    setTimeout(() => {
+      const selection = window.getSelection();
+      const selectedText = selection.toString().trim();
+      
+      if (selectedText && selectedText.length > 1 && !tooltip.contains(e.target)) {
+        try {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          
+          showTranslation(
+            selectedText,
+            rect.left + rect.width / 2 - 10,
+            rect.bottom + window.scrollY
+          );
+          
+          clearTimeout(hideTimeout);
+        } catch (err) {
+          console.error('Error getting selection:', err);
+        }
+      }
+    }, 100);
+  });
+  
+  // ツールチップの上にマウス/タッチがある時は隠さない
   tooltip.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimeout);
+  });
+  
+  tooltip.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
     clearTimeout(hideTimeout);
   });
   
   tooltip.addEventListener('mouseleave', () => {
     hideTimeout = setTimeout(() => {
       tooltip.style.display = "none";
-    }, 1000); // 1秒後に消える
+    }, 1000);
   });
   
   // ESCキーでツールチップを隠す
@@ -480,6 +529,7 @@ function setupTranslation() {
     if (e.key === 'Escape') {
       tooltip.style.display = "none";
       window.getSelection().removeAllRanges();
+      stopSelectionCheck();
     }
   });
 }
