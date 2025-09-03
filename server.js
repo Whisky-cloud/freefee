@@ -19,23 +19,124 @@ try {
 }
 
 const formHTML = `
-<div style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
-  <input type="url" name="url" placeholder="英語サイトURL" style="width:80%;height:80px;padding:8px;font-size:32px;">
+<form method="get" action="/proxy" style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 10px;">
+  <input type="url" id="url-input" name="url" placeholder="英語サイトURL" style="width:600px;height:80px;padding:8px;font-size:32px;">
   <button type="submit" style="height:80px;font-size:20px;padding:0 12px;">開く</button>
-  <input type="range" id="font-slider" min="20" max="70" value="40" style="width:600px; accent-color: #5c3a21;">
-</div>
+  <input type="number" id="font-size-input" min="10" max="100" value="32" style="width:80px;height:80px;padding:8px;font-size:32px;text-align:center;">
+  <button type="button" id="font-size-apply" style="height:80px;font-size:20px;padding:0 12px;">適用</button>
+</form>
 
 <script>
-document.getElementById("font-slider").addEventListener("input", function() {
-  document.body.style.fontSize = this.value + "px";
-});
+// URLの保存と復元
+(function() {
+  // 現在のページのURL入力欄を取得（複数ある場合は最後のもの）
+  const allUrlInputs = document.querySelectorAll('#url-input');
+  const urlInput = allUrlInputs[allUrlInputs.length - 1];
+  
+  const allFontInputs = document.querySelectorAll('#font-size-input');
+  const fontInput = allFontInputs[allFontInputs.length - 1];
+  
+  const allFontButtons = document.querySelectorAll('#font-size-apply');
+  const fontButton = allFontButtons[allFontButtons.length - 1];
+  
+  // 保存されたURLがあれば復元
+  const savedUrl = localStorage.getItem("lastProxyUrl");
+  if (savedUrl && urlInput) {
+    urlInput.value = savedUrl;
+  }
+  
+  // 保存されたフォントサイズがあれば復元
+  const savedFontSize = localStorage.getItem("fontSize") || "32";
+  if (fontInput) {
+    fontInput.value = savedFontSize;
+    document.body.style.fontSize = savedFontSize + "px";
+  }
+  
+  // URLを入力したら保存
+  if (urlInput) {
+    urlInput.addEventListener("change", function() {
+      localStorage.setItem("lastProxyUrl", this.value);
+    });
+    
+    // フォームが送信される時も保存
+    const form = urlInput.closest("form");
+    if (form) {
+      // 既存のイベントリスナーを削除して新しく追加
+      const newForm = form.cloneNode(true);
+      form.parentNode.replaceChild(newForm, form);
+      
+      newForm.addEventListener("submit", function(e) {
+        const currentUrlInput = newForm.querySelector('#url-input');
+        const currentUrl = currentUrlInput.value;
+        if (currentUrl) {
+          localStorage.setItem("lastProxyUrl", currentUrl);
+          // フォーム送信を続行
+        } else {
+          e.preventDefault(); // URLが空の場合は送信しない
+        }
+      });
+      
+      // フォントサイズ適用ボタンのイベントも再設定
+      const newFontButton = newForm.querySelector('#font-size-apply');
+      const newFontInput = newForm.querySelector('#font-size-input');
+      if (newFontButton && newFontInput) {
+        newFontButton.addEventListener("click", function(e) {
+          e.preventDefault();
+          const size = parseInt(newFontInput.value);
+          if (size >= 10 && size <= 100) {
+            document.body.style.fontSize = size + "px";
+            localStorage.setItem("fontSize", size);
+          }
+        });
+      }
+    }
+  }
+  
+  // フォントサイズ適用ボタン
+  if (fontButton && fontInput) {
+    fontButton.addEventListener("click", function(e) {
+      e.preventDefault();
+      const size = parseInt(fontInput.value);
+      if (size >= 10 && size <= 100) {
+        document.body.style.fontSize = size + "px";
+        localStorage.setItem("fontSize", size);
+      }
+    });
+  }
+})();
 </script>
 `;
 
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  res.send(`<form method="get" action="/proxy">${formHTML}</form>`);
+  const autoLoadScript = `
+    <script>
+      // ページ読み込み時に、保存されたURLがあれば自動的に読み込む
+      window.addEventListener('DOMContentLoaded', function() {
+        const savedUrl = localStorage.getItem("lastProxyUrl");
+        const autoLoad = localStorage.getItem("autoLoadLastUrl");
+        
+        // 初回アクセス時は自動読み込みを有効にする
+        if (autoLoad === null) {
+          localStorage.setItem("autoLoadLastUrl", "true");
+        }
+        
+        // 自動読み込みが有効で、保存されたURLがある場合
+        if (savedUrl && localStorage.getItem("autoLoadLastUrl") === "true") {
+          // 自動読み込みフラグを一時的にオフにする（無限ループ防止）
+          localStorage.setItem("autoLoadLastUrl", "false");
+          // プロキシページへリダイレクト
+          window.location.href = "/proxy?url=" + encodeURIComponent(savedUrl);
+        } else {
+          // 自動読み込みフラグを次回のために有効に戻す
+          localStorage.setItem("autoLoadLastUrl", "true");
+        }
+      });
+    </script>
+  `;
+  
+  res.send(`<form method="get" action="/proxy">${formHTML}</form>${autoLoadScript}`);
 });
 
 // クライアントサイド遅延処理版のプロキシ
@@ -60,7 +161,7 @@ app.get("/proxy", async (req, res) => {
     $('link[rel="prefetch"]').remove();
 
     // CSS追加
-    $("body").css("font-size", "40px");
+    $("body").css("font-size", "32px");  // 初期値を32pxに変更
     const styleFix = `
 <style>
 html, body { max-width:100%; overflow-x:hidden; }
@@ -270,14 +371,14 @@ function setupTranslation() {
   function showTranslation(text, x, y) {
     if (!text || !text.trim()) return;
     
+    // タイムアウトをクリア（重要：表示前にクリア）
+    clearTimeout(hideTimeout);
+    
     // ツールチップを即座に表示（ローディング状態）
     tooltip.textContent = '翻訳中...';
     tooltip.style.left = x + 10 + "px";
     tooltip.style.top = y + 10 + "px";
     tooltip.style.display = "block";
-    
-    // タイムアウトをクリア
-    clearTimeout(hideTimeout);
     
     fetch("/translate?text=" + encodeURIComponent(text) + "&lang=ja")
       .then(response => response.json())
@@ -305,11 +406,14 @@ function setupTranslation() {
       
       const text = e.target.textContent.trim();
       showTranslation(text, e.pageX, e.pageY);
-    } else {
-      // クリック位置がツールチップ以外の場合は隠す
+      
+      // クリック後はツールチップを表示し続ける（消さない）
+      clearTimeout(hideTimeout);
+    } else if (!tooltip.contains(e.target)) {
+      // ツールチップ以外の場所をクリックした場合のみ隠す
       hideTimeout = setTimeout(() => {
         tooltip.style.display = "none";
-      }, 300);
+      }, 100);
     }
   });
   
@@ -330,18 +434,19 @@ function setupTranslation() {
         
         // 選択したテキストの翻訳を表示
         showTranslation(selectedText, rect.left + (rect.width / 2) - 10, rect.bottom + window.scrollY);
+        
+        // 選択後はツールチップを表示し続ける
+        clearTimeout(hideTimeout);
       }
     }, 200);
   });
   
-  // 選択解除時にツールチップを隠す
+  // 選択解除時にツールチップを隠す（ただし、ツールチップ上でない場合のみ）
   document.addEventListener('selectionchange', () => {
     const selection = window.getSelection();
     if (!selection.toString()) {
       clearTimeout(selectionTimeout);
-      hideTimeout = setTimeout(() => {
-        tooltip.style.display = "none";
-      }, 300);
+      // 選択が解除されてもすぐには消さない
     }
   });
   
@@ -353,7 +458,7 @@ function setupTranslation() {
   tooltip.addEventListener('mouseleave', () => {
     hideTimeout = setTimeout(() => {
       tooltip.style.display = "none";
-    }, 300);
+    }, 1000); // 1秒後に消える
   });
 }
 
@@ -370,9 +475,6 @@ if (document.readyState === 'loading') {
 
     $("body").append(clientSideScript);
     $("body").append(formHTML);
-    
-    // ホームボタンを追加
-    $("body").append(`<a href="/" class="home-button">🏠 ホーム</a>`);
 
     res.send($.html());
   } catch (err) {
