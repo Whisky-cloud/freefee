@@ -574,12 +574,12 @@ app.get("/translate", async (req, res) => {
     const response = await axios.post(
       'https://api-free.deepl.com/v2/translate',
       new URLSearchParams({
-        auth_key: deeplApiKey,
         text: text,
         target_lang: lang.toUpperCase()
       }),
       {
         headers: {
+          'Authorization': `DeepL-Auth-Key ${deeplApiKey}`,
           'Content-Type': 'application/x-www-form-urlencoded'
         }
       }
@@ -588,7 +588,7 @@ app.get("/translate", async (req, res) => {
     const translation = response.data.translations[0].text;
     res.json({ translation });
   } catch (err) {
-    console.error('Translation error:', err);
+    console.error('Translation error:', err.response?.data || err.message);
     res.json({ translation: `[翻訳エラー: ${text}]` });
   }
 });
