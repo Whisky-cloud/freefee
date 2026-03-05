@@ -1,21 +1,19 @@
-// server.js - 修正版
+// server.js - DEEPL API版
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
-const { Translate } = require("@google-cloud/translate").v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-let translate = null;
+let deeplApiKey = null;
 try {
-  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-  translate = new Translate({
-    projectId: credentials.project_id,
-    credentials,
-  });
+  deeplApiKey = process.env.DEEPL_API_KEY;
+  if (!deeplApiKey) {
+    throw new Error("DEEPL_API_KEY not set");
+  }
 } catch (e) {
-  console.error("GOOGLE_CREDENTIALS が正しく設定されていません。翻訳機能は無効になります。");
+  console.error("DEEPL_API_KEY が正しく設定されていません。翻訳機能は無効になります。");
 }
 
 const formHTML = `
@@ -567,13 +565,27 @@ app.get("/translate", async (req, res) => {
     return res.json({ translation: "" });
   }
 
-  if (!translate) {
-    console.log('Translation API not configured, returning placeholder');
+  if (!deeplApiKey) {
+    console.log('DeepL API not configured, returning placeholder');
     return res.json({ translation: `[${text}]` });
   }
 
   try {
-    const [translation] = await translate.translate(text, lang);
+    const response = await axios.post(
+      'https://api-free.deepl.com/v2/translate',
+      new URLSearchParams({
+        auth_key: deeplApiKey,
+        text: text,
+        target_lang: lang.toUpperCase()
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+    
+    const translation = response.data.translations[0].text;
     res.json({ translation });
   } catch (err) {
     console.error('Translation error:', err);
@@ -583,5 +595,5 @@ app.get("/translate", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`サーバー起動 ポート: ${PORT}`);
-  console.log(`翻訳API: ${translate ? '有効' : '無効（GOOGLE_CREDENTIALSを設定してください）'}`);
+  console.log(`翻訳API: ${deeplApiKey ? '有効' : '無効（DEEPL_API_KEYを設定してください）'}`);
 });
